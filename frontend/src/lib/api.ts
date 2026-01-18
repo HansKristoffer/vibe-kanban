@@ -91,6 +91,8 @@ import {
   Workspace,
   StartReviewRequest,
   ReviewError,
+  WorkspaceAutomation,
+  StartRalphRequest,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -797,6 +799,37 @@ export const attemptsApi = {
       `/api/task-attempts/${attemptId}/mark-seen`,
       {
         method: 'PUT',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  getRalphStatus: async (
+    attemptId: string
+  ): Promise<WorkspaceAutomation | null> => {
+    const response = await makeRequest(`/api/task-attempts/${attemptId}/ralph`);
+    return handleApiResponse<WorkspaceAutomation | null>(response);
+  },
+
+  startRalph: async (
+    attemptId: string,
+    data: StartRalphRequest
+  ): Promise<WorkspaceAutomation> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/ralph/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<WorkspaceAutomation>(response);
+  },
+
+  stopRalph: async (attemptId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/ralph/stop`,
+      {
+        method: 'POST',
       }
     );
     return handleApiResponse<void>(response);

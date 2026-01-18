@@ -3,6 +3,7 @@ import { attemptsApi } from '@/lib/api';
 import { workspaceSummaryKeys } from '@/components/ui-new/hooks/useWorkspaces';
 import type {
   ExecutorProfileId,
+  RalphModeConfig,
   WorkspaceRepoInput,
   Workspace,
 } from 'shared/types';
@@ -10,6 +11,7 @@ import type {
 type CreateAttemptArgs = {
   profile: ExecutorProfileId;
   repos: WorkspaceRepoInput[];
+  ralph?: RalphModeConfig;
 };
 
 type UseAttemptCreationArgs = {
@@ -24,11 +26,12 @@ export function useAttemptCreation({
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: ({ profile, repos }: CreateAttemptArgs) =>
+    mutationFn: ({ profile, repos, ralph }: CreateAttemptArgs) =>
       attemptsApi.create({
         task_id: taskId,
         executor_profile_id: profile,
         repos,
+        ralph,
       }),
     onSuccess: (newAttempt: Workspace) => {
       queryClient.setQueryData(

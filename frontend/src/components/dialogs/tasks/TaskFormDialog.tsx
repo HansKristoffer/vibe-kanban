@@ -81,6 +81,9 @@ type TaskFormValues = {
   executorProfileId: ExecutorProfileId | null;
   repoBranches: RepoBranch[];
   autoStart: boolean;
+  ralphEnabled: boolean;
+  ralphMaxIterations: number;
+  ralphMaxFailures: number;
 };
 
 const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
@@ -136,6 +139,9 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: false,
+          ralphEnabled: false,
+          ralphMaxIterations: 10,
+          ralphMaxFailures: 3,
         };
 
       case 'duplicate':
@@ -146,6 +152,9 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: true,
+          ralphEnabled: false,
+          ralphMaxIterations: 10,
+          ralphMaxFailures: 3,
         };
 
       case 'subtask':
@@ -158,6 +167,9 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: true,
+          ralphEnabled: false,
+          ralphMaxIterations: 10,
+          ralphMaxFailures: 3,
         };
     }
   }, [mode, props, system.config?.executor_profile, defaultRepoBranches]);
@@ -197,11 +209,18 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           repo_id: rb.repoId,
           target_branch: rb.branch,
         }));
+        const ralphConfig = value.ralphEnabled
+          ? {
+              max_iterations: value.ralphMaxIterations,
+              max_failures: value.ralphMaxFailures,
+            }
+          : undefined;
         await createAndStart.mutateAsync(
           {
             task,
             executor_profile_id: value.executorProfileId!,
             repos,
+            ralph: ralphConfig,
           },
           { onSuccess: () => modal.remove() }
         );
@@ -220,6 +239,10 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
         value.repoBranches.some((rb) => !rb.branch)
       ) {
         return 'need branch for all repos';
+      }
+      if (value.ralphEnabled) {
+        if (value.ralphMaxIterations <= 0) return 'need max iterations';
+        if (value.ralphMaxFailures <= 0) return 'need max failures';
       }
     }
   };
@@ -600,6 +623,90 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                         }}
                       </form.Field>
                     )}
+                    <form.Field name="ralphEnabled">
+                      {(field) => (
+                        <div
+                          className={cn(
+                            'flex flex-col gap-2 rounded-md border p-3',
+                            isSubmitting ||
+                              !autoStartField.state.value ||
+                              !field.state.value
+                              ? 'opacity-70'
+                              : 'opacity-100'
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="space-y-1">
+                              <Label
+                                htmlFor="ralph-switch"
+                                className="text-sm"
+                              >
+                                Ralph mode
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
+                                Run multiple autonomous iterations for this
+                                task attempt.
+                              </p>
+                            </div>
+                            <Switch
+                              id="ralph-switch"
+                              checked={field.state.value}
+                              onCheckedChange={(checked) =>
+                                field.handleChange(checked)
+                              }
+                              disabled={
+                                isSubmitting || !autoStartField.state.value
+                              }
+                              className="data-[state=checked]:bg-gray-900 dark:data-[state=checked]:bg-gray-100"
+                            />
+                          </div>
+                          {field.state.value && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <form.Field name="ralphMaxIterations">
+                                {(iterationsField) => (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground">
+                                      Max iterations
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      value={iterationsField.state.value}
+                                      onChange={(e) =>
+                                        iterationsField.handleChange(
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      disabled={isSubmitting}
+                                    />
+                                  </div>
+                                )}
+                              </form.Field>
+                              <form.Field name="ralphMaxFailures">
+                                {(failuresField) => (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground">
+                                      Max failures
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      value={failuresField.state.value}
+                                      onChange={(e) =>
+                                        failuresField.handleChange(
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      disabled={isSubmitting}
+                                    />
+                                  </div>
+                                )}
+                              </form.Field>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </form.Field>
                   </div>
                 );
               }}

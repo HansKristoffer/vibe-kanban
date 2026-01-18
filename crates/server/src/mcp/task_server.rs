@@ -732,6 +732,7 @@ impl TaskServer {
             task_id,
             executor_profile_id,
             repos: workspace_repos,
+            ralph: None,
         };
 
         let url = self.url("/api/task-attempts");

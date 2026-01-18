@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                workspace_id as \"workspace_id!: Uuid\",\n                mode as \"mode!: WorkspaceAutomationMode\",\n                status as \"status!: WorkspaceAutomationStatus\",\n                iteration as \"iteration!: i64\",\n                max_iterations as \"max_iterations!: i64\",\n                consecutive_failures as \"consecutive_failures!: i64\",\n                max_failures as \"max_failures!: i64\",\n                last_error,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n              FROM workspace_automations\n              WHERE workspace_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "workspace_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "mode!: WorkspaceAutomationMode",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: WorkspaceAutomationStatus",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "iteration!: i64",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "max_iterations!: i64",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "consecutive_failures!: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "max_failures!: i64",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_error",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "1f2cebae5452522c1fbe7b2c5b97012fb971ca1cc8e097ab8d9441a0c6830426"
+}

@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 use crate::{
     DeploymentImpl, error::ApiError, middleware::load_task_middleware,
-    routes::task_attempts::WorkspaceRepoInput,
+    routes::task_attempts::{RalphModeConfig, WorkspaceRepoInput},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,6 +144,7 @@ pub struct CreateAndStartTaskRequest {
     pub task: CreateTask,
     pub executor_profile_id: ExecutorProfileId,
     pub repos: Vec<WorkspaceRepoInput>,
+    pub ralph: Option<RalphModeConfig>,
 }
 
 pub async fn create_task_and_start(
@@ -215,6 +216,26 @@ pub async fn create_task_and_start(
         })
         .collect();
     WorkspaceRepo::create_many(&deployment.db().pool, workspace.id, &workspace_repos).await?;
+
+    if let Some(ralph) = payload.ralph.as_ref() {
+        let max_iterations = ralph.max_iterations.unwrap_or(10);
+        let max_failures = ralph.max_failures.unwrap_or(3);
+        let automation = db::models::workspace_automation::CreateWorkspaceAutomation {
+            mode: db::models::workspace_automation::WorkspaceAutomationMode::Ralph,
+            status: db::models::workspace_automation::WorkspaceAutomationStatus::Running,
+            iteration: 1,
+            max_iterations,
+            consecutive_failures: 0,
+            max_failures,
+            last_error: None,
+        };
+        db::models::workspace_automation::WorkspaceAutomation::create(
+            pool,
+            workspace.id,
+            &automation,
+        )
+        .await?;
+    }
 
     let is_attempt_running = deployment
         .container()

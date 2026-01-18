@@ -9,6 +9,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import RepoBranchSelector from '@/components/tasks/RepoBranchSelector';
 import { ExecutorProfileSelector } from '@/components/settings';
 import { useAttemptCreation } from '@/hooks/useAttemptCreation';
@@ -50,6 +53,9 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
 
     const [userSelectedProfile, setUserSelectedProfile] =
       useState<ExecutorProfileId | null>(null);
+    const [ralphEnabled, setRalphEnabled] = useState(false);
+    const [ralphMaxIterations, setRalphMaxIterations] = useState(10);
+    const [ralphMaxFailures, setRalphMaxFailures] = useState(3);
 
     const { data: attempts = [], isLoading: isLoadingAttempts } =
       useTaskAttemptsWithSessions(taskId, {
@@ -95,6 +101,9 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
       if (!modal.visible) {
         setUserSelectedProfile(null);
         resetBranchSelection();
+        setRalphEnabled(false);
+        setRalphMaxIterations(10);
+        setRalphMaxFailures(3);
       }
     }, [modal.visible, resetBranchSelection]);
 
@@ -148,10 +157,17 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
         return;
       try {
         const repos = getWorkspaceRepoInputs();
+        const ralphConfig = ralphEnabled
+          ? {
+              max_iterations: ralphMaxIterations,
+              max_failures: ralphMaxFailures,
+            }
+          : undefined;
 
         await createAttempt({
           profile: effectiveProfile,
           repos,
+          ralph: ralphConfig,
         });
 
         modal.hide();
@@ -198,6 +214,54 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
               isLoading={isLoadingBranches}
               className="space-y-2"
             />
+
+            <div className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="space-y-1">
+                  <Label className="text-sm">Ralph mode</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Run multiple autonomous iterations for this attempt.
+                  </p>
+                </div>
+                <Switch
+                  id="ralph-mode"
+                  checked={ralphEnabled}
+                  onCheckedChange={setRalphEnabled}
+                  disabled={isCreating}
+                  className="data-[state=checked]:bg-gray-900 dark:data-[state=checked]:bg-gray-100"
+                />
+              </div>
+              {ralphEnabled && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Max iterations
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={ralphMaxIterations}
+                      onChange={(e) =>
+                        setRalphMaxIterations(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Max failures
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={ralphMaxFailures}
+                      onChange={(e) =>
+                        setRalphMaxFailures(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {error && (
               <div className="text-sm text-destructive">

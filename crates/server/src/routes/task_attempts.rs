@@ -31,6 +31,10 @@ use db::models::{
     session::{CreateSession, Session},
     task::{Task, TaskRelationships, TaskStatus},
     workspace::{CreateWorkspace, Workspace, WorkspaceError},
+    workspace_automation::{
+        CreateWorkspaceAutomation, WorkspaceAutomation, WorkspaceAutomationMode,
+        WorkspaceAutomationStatus,
+    },
     workspace_repo::{CreateWorkspaceRepo, RepoWithTargetBranch, WorkspaceRepo},
 };
 use deployment::Deployment;
@@ -152,12 +156,19 @@ pub struct CreateTaskAttemptBody {
     pub task_id: Uuid,
     pub executor_profile_id: ExecutorProfileId,
     pub repos: Vec<WorkspaceRepoInput>,
+    pub ralph: Option<RalphModeConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ts_rs::TS)]
 pub struct WorkspaceRepoInput {
     pub repo_id: Uuid,
     pub target_branch: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+pub struct RalphModeConfig {
+    pub max_iterations: Option<i64>,
+    pub max_failures: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -225,6 +236,20 @@ pub async fn create_task_attempt(
         .collect();
 
     WorkspaceRepo::create_many(pool, workspace.id, &workspace_repos).await?;
+    if let Some(ralph) = payload.ralph.as_ref() {
+        let max_iterations = ralph.max_iterations.unwrap_or(10);
+        let max_failures = ralph.max_failures.unwrap_or(3);
+        let automation = CreateWorkspaceAutomation {
+            mode: WorkspaceAutomationMode::Ralph,
+            status: WorkspaceAutomationStatus::Running,
+            iteration: 1,
+            max_iterations,
+            consecutive_failures: 0,
+            max_failures,
+            last_error: None,
+        };
+        WorkspaceAutomation::create(pool, workspace.id, &automation).await?;
+    }
     if let Err(err) = deployment
         .container()
         .start_workspace(&workspace, executor_profile_id.clone())
@@ -1748,6 +1773,45 @@ pub async fn mark_seen(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+#[derive(Debug, Deserialize, TS)]
+pub struct StartRalphRequest {
+    pub max_iterations: Option<i64>,
+    pub max_failures: Option<i64>,
+}
+
+pub async fn get_ralph_status(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Option<WorkspaceAutomation>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let automation = WorkspaceAutomation::find_by_workspace_id(pool, workspace.id).await?;
+    Ok(ResponseJson(ApiResponse::success(automation)))
+}
+
+pub async fn start_ralph(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<StartRalphRequest>,
+) -> Result<ResponseJson<ApiResponse<WorkspaceAutomation>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let max_iterations = payload.max_iterations.unwrap_or(10);
+    let max_failures = payload.max_failures.unwrap_or(3);
+    let automation =
+        WorkspaceAutomation::start_or_reset(pool, workspace.id, max_iterations, max_failures)
+            .await?;
+    Ok(ResponseJson(ApiResponse::success(automation)))
+}
+
+pub async fn stop_ralph(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    WorkspaceAutomation::update_status(pool, workspace.id, WorkspaceAutomationStatus::Stopped)
+        .await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route(
@@ -1780,6 +1844,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/search", get(search_workspace_files))
         .route("/first-message", get(get_first_user_message))
         .route("/mark-seen", put(mark_seen))
+        .route("/ralph", get(get_ralph_status))
+        .route("/ralph/start", post(start_ralph))
+        .route("/ralph/stop", post(stop_ralph))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_workspace_middleware,

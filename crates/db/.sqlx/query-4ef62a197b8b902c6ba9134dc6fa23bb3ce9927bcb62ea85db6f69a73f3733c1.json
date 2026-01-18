@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE workspace_automations\n               SET consecutive_failures = 0,\n                   last_error = NULL,\n                   updated_at = datetime('now', 'subsec')\n               WHERE workspace_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "4ef62a197b8b902c6ba9134dc6fa23bb3ce9927bcb62ea85db6f69a73f3733c1"
+}

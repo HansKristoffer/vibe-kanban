@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE workspace_automations\n               SET iteration = iteration + 1,\n                   updated_at = datetime('now', 'subsec')\n               WHERE workspace_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "c257a9770bf5847fa0bbb0709c44bf6d9056444afb83578e3536a15b7da1868a"
+}

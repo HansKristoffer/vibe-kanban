@@ -17,11 +17,13 @@ use db::{
         execution_process::{
             ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
+        execution_process_logs::ExecutionProcessLogs,
         execution_process_repo_state::ExecutionProcessRepoState,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         task::{Task, TaskStatus},
         workspace::Workspace,
+        workspace_automation::{WorkspaceAutomation, WorkspaceAutomationStatus},
         workspace_repo::WorkspaceRepo,
     },
 };
@@ -53,6 +55,7 @@ use services::services::{
     share::SharePublisher,
     workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
 };
+use sqlx::SqlitePool;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 use utils::{
@@ -501,6 +504,123 @@ impl LocalContainerService {
                 }
 
                 if container.should_finalize(&ctx) {
+                    if let Ok(Some(automation)) =
+                        WorkspaceAutomation::find_by_workspace_id(&db.pool, ctx.workspace.id).await
+                    {
+                        if matches!(automation.status, WorkspaceAutomationStatus::Running) {
+                            let failure = matches!(
+                                ctx.execution_process.status,
+                                ExecutionProcessStatus::Failed | ExecutionProcessStatus::Killed
+                            );
+                            let failure_excerpt = if failure {
+                                container
+                                    .extract_last_error_excerpt(&db.pool, exec_id)
+                                    .await
+                            } else {
+                                None
+                            };
+
+                            if failure {
+                                let _ = WorkspaceAutomation::record_failure(
+                                    &db.pool,
+                                    ctx.workspace.id,
+                                    failure_excerpt.as_deref(),
+                                )
+                                .await;
+                            } else {
+                                let _ =
+                                    WorkspaceAutomation::reset_failures(&db.pool, ctx.workspace.id)
+                                        .await;
+                            }
+
+                            let automation = WorkspaceAutomation::find_by_workspace_id(
+                                &db.pool,
+                                ctx.workspace.id,
+                            )
+                            .await
+                            .unwrap_or(None);
+
+                            if let Some(automation) = automation {
+                                let completion = container
+                                    .latest_coding_agent_summary(&db.pool, ctx.session.id)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .is_some_and(|summary| contains_completion_marker(&summary));
+
+                                if completion {
+                                    let _ = WorkspaceAutomation::update_status(
+                                        &db.pool,
+                                        ctx.workspace.id,
+                                        WorkspaceAutomationStatus::Completed,
+                                    )
+                                    .await;
+                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    return;
+                                }
+
+                                if automation.consecutive_failures > automation.max_failures {
+                                    let _ = WorkspaceAutomation::update_status(
+                                        &db.pool,
+                                        ctx.workspace.id,
+                                        WorkspaceAutomationStatus::Stopped,
+                                    )
+                                    .await;
+                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    return;
+                                }
+
+                                if automation.iteration >= automation.max_iterations {
+                                    let _ = WorkspaceAutomation::update_status(
+                                        &db.pool,
+                                        ctx.workspace.id,
+                                        WorkspaceAutomationStatus::Stopped,
+                                    )
+                                    .await;
+                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    return;
+                                }
+
+                                let prompt = container
+                                    .build_ralph_prompt(
+                                        &ctx,
+                                        &automation,
+                                        failure_excerpt.as_deref(),
+                                    )
+                                    .await;
+
+                                if let Err(e) = WorkspaceAutomation::increment_iteration(
+                                    &db.pool,
+                                    ctx.workspace.id,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(
+                                        "Failed to increment Ralph iteration for workspace {}: {}",
+                                        ctx.workspace.id,
+                                        e
+                                    );
+                                }
+
+                                // Discard any queued manual follow-up while Ralph is running.
+                                let _ =
+                                    container.queued_message_service.take_queued(ctx.session.id);
+
+                                if let Err(e) = container.start_ralph_follow_up(&ctx, prompt).await {
+                                    tracing::error!("Failed to start Ralph follow-up: {}", e);
+                                    let _ = WorkspaceAutomation::update_status(
+                                        &db.pool,
+                                        ctx.workspace.id,
+                                        WorkspaceAutomationStatus::Stopped,
+                                    )
+                                    .await;
+                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                }
+                                return;
+                            }
+                        }
+                    }
+
                     // Only execute queued messages if the execution succeeded
                     // If it failed or was killed, just clear the queue and finalize
                     let should_execute_queued = !matches!(
@@ -896,6 +1016,213 @@ impl LocalContainerService {
             &ExecutionProcessRunReason::CodingAgent,
         )
         .await
+    }
+
+    async fn start_ralph_follow_up(
+        &self,
+        ctx: &ExecutionContext,
+        prompt: String,
+    ) -> Result<ExecutionProcess, ContainerError> {
+        let queued_data = DraftFollowUpData {
+            message: prompt,
+            variant: None,
+        };
+        self.start_queued_follow_up(ctx, &queued_data).await
+    }
+
+    async fn latest_coding_agent_summary(
+        &self,
+        pool: &SqlitePool,
+        session_id: Uuid,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let latest = ExecutionProcess::find_latest_by_session_and_run_reason(
+            pool,
+            session_id,
+            &ExecutionProcessRunReason::CodingAgent,
+        )
+        .await?;
+        let Some(process) = latest else {
+            return Ok(None);
+        };
+        let turn = CodingAgentTurn::find_by_execution_process_id(pool, process.id).await?;
+        Ok(turn.and_then(|t| t.summary))
+    }
+
+    async fn extract_last_error_excerpt(
+        &self,
+        pool: &SqlitePool,
+        execution_id: Uuid,
+    ) -> Option<String> {
+        let records = ExecutionProcessLogs::find_by_execution_id(pool, execution_id)
+            .await
+            .ok()?;
+        let messages = ExecutionProcessLogs::parse_logs(&records).ok()?;
+        let mut stderr_lines = Vec::new();
+        for msg in messages.iter().rev() {
+            if let LogMsg::Stderr(line) = msg {
+                if !line.trim().is_empty() {
+                    stderr_lines.push(line.trim().to_string());
+                }
+            }
+            if stderr_lines.len() >= 6 {
+                break;
+            }
+        }
+        if stderr_lines.is_empty() {
+            None
+        } else {
+            stderr_lines.reverse();
+            Some(stderr_lines.join("\n"))
+        }
+    }
+
+    async fn build_ralph_prompt(
+        &self,
+        ctx: &ExecutionContext,
+        automation: &WorkspaceAutomation,
+        last_error: Option<&str>,
+    ) -> String {
+        let workspace_root = ctx
+            .workspace
+            .container_ref
+            .as_ref()
+            .map(PathBuf::from);
+        let working_dir = ctx
+            .workspace
+            .agent_working_dir
+            .as_ref()
+            .filter(|dir| !dir.is_empty())
+            .and_then(|dir| workspace_root.as_ref().map(|root| root.join(dir)));
+
+        let mut prd_content = None;
+        let mut progress_content = None;
+        if let Some(root) = workspace_root.as_ref() {
+            prd_content = read_optional_file(root.join("PRD.md"));
+            progress_content = read_optional_file(root.join("progress.txt"));
+        }
+        if prd_content.is_none() || progress_content.is_none() {
+            if let Some(work_dir) = working_dir {
+                if prd_content.is_none() {
+                    prd_content = read_optional_file(work_dir.join("PRD.md"));
+                }
+                if progress_content.is_none() {
+                    progress_content = read_optional_file(work_dir.join("progress.txt"));
+                }
+            }
+        }
+
+        assemble_ralph_prompt(
+            &ctx.task.to_prompt(),
+            automation.iteration + 1,
+            automation.max_iterations,
+            last_error,
+            prd_content.as_deref(),
+            progress_content.as_deref(),
+        )
+    }
+}
+
+fn contains_completion_marker(summary: &str) -> bool {
+    summary.contains("<promise>COMPLETE</promise>")
+}
+
+fn assemble_ralph_prompt(
+    task_prompt: &str,
+    iteration: i64,
+    max_iterations: i64,
+    last_error: Option<&str>,
+    prd: Option<&str>,
+    progress: Option<&str>,
+) -> String {
+    let mut prompt = String::new();
+    prompt.push_str("Ralph mode is enabled for this task.\n");
+    prompt.push_str(&format!("Iteration {iteration}/{max_iterations}.\n\n"));
+    prompt.push_str("Task:\n");
+    prompt.push_str(task_prompt);
+    prompt.push_str("\n\n");
+
+    if let Some(error) = last_error {
+        prompt.push_str("Last failure excerpt:\n");
+        prompt.push_str(error);
+        prompt.push_str("\n\n");
+    }
+
+    if let Some(prd) = prd {
+        let trimmed = prd.trim();
+        if !trimmed.is_empty() {
+            prompt.push_str("PRD.md:\n");
+            prompt.push_str(trimmed);
+            prompt.push_str("\n\n");
+        }
+    }
+
+    if let Some(progress) = progress {
+        let trimmed = progress.trim();
+        if !trimmed.is_empty() {
+            prompt.push_str("progress.txt:\n");
+            prompt.push_str(trimmed);
+            prompt.push_str("\n\n");
+        }
+    }
+
+    prompt.push_str(
+        "Instructions:\n\
+1. Decide the highest-priority remaining subtask.\n\
+2. Make a small, focused change.\n\
+3. Use existing feedback loops (tests/lint/cleanup) as guardrails.\n\
+4. Update progress.txt (and PRD.md if present).\n\
+5. If all work is complete, output <promise>COMPLETE</promise>.\n",
+    );
+
+    prompt
+}
+
+fn read_optional_file(path: PathBuf) -> Option<String> {
+    if let Ok(contents) = std::fs::read_to_string(&path) {
+        let trimmed = contents.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        const MAX_CHARS: usize = 12_000;
+        let mut snippet = trimmed.to_string();
+        if snippet.len() > MAX_CHARS {
+            snippet.truncate(MAX_CHARS);
+            snippet.push_str("\n... (truncated)");
+        }
+        Some(snippet)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{assemble_ralph_prompt, contains_completion_marker};
+
+    #[test]
+    fn detects_completion_marker() {
+        assert!(contains_completion_marker("<promise>COMPLETE</promise>"));
+        assert!(contains_completion_marker("done\n<promise>COMPLETE</promise>\n"));
+        assert!(!contains_completion_marker("complete"));
+    }
+
+    #[test]
+    fn assembles_ralph_prompt_with_optional_sections() {
+        let prompt = assemble_ralph_prompt(
+            "Implement feature X",
+            2,
+            5,
+            Some("tests failed"),
+            Some("- [ ] step 1"),
+            Some("did step 0"),
+        );
+
+        assert!(prompt.contains("Iteration 2/5"));
+        assert!(prompt.contains("Implement feature X"));
+        assert!(prompt.contains("Last failure excerpt"));
+        assert!(prompt.contains("PRD.md:"));
+        assert!(prompt.contains("progress.txt:"));
+        assert!(prompt.contains("<promise>COMPLETE</promise>"));
     }
 }
 

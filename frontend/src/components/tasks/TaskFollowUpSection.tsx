@@ -25,7 +25,11 @@ import {
 } from '@/components/ui/tooltip';
 //
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { ScratchType, type TaskWithAttemptStatus } from 'shared/types';
+import {
+  ScratchType,
+  type TaskWithAttemptStatus,
+  type WorkspaceAutomation,
+} from 'shared/types';
 import { useBranchStatus } from '@/hooks';
 import { useAttemptRepo } from '@/hooks/useAttemptRepo';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
@@ -79,6 +83,23 @@ export function TaskFollowUpSection({
 
   const { isAttemptRunning, stopExecution, isStopping, processes } =
     useAttemptExecution(workspaceId, task.id);
+
+  const {
+    data: ralphStatus,
+    refetch: refetchRalphStatus,
+  } = useQuery<WorkspaceAutomation | null>({
+    queryKey: ['ralphStatus', workspaceId],
+    queryFn: () => attemptsApi.getRalphStatus(workspaceId!),
+    enabled: Boolean(workspaceId),
+    refetchInterval: (data) => (data?.status === 'running' ? 5000 : false),
+  });
+
+  const stopRalphMutation = useMutation({
+    mutationFn: () => attemptsApi.stopRalph(workspaceId!),
+    onSuccess: () => {
+      refetchRalphStatus();
+    },
+  });
 
   const { data: branchStatus, refetch: refetchBranchStatus } =
     useBranchStatus(workspaceId);
@@ -734,6 +755,28 @@ export function TaskFollowUpSection({
 
             {/* Clicked elements notice and actions */}
             <ClickedElementsBanner />
+
+            {ralphStatus && (
+              <div className="flex items-center justify-between gap-3 text-sm bg-muted p-3 rounded-md border">
+                <div className="space-y-1">
+                  <div className="font-medium">Ralph mode</div>
+                  <div className="text-xs text-muted-foreground">
+                    {ralphStatus.status} • iteration {ralphStatus.iteration} /{' '}
+                    {ralphStatus.max_iterations}
+                  </div>
+                </div>
+                {ralphStatus.status === 'running' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => stopRalphMutation.mutate()}
+                    disabled={stopRalphMutation.isPending}
+                  >
+                    Stop Ralph
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Queued message indicator */}
             {isQueued && queuedMessage && (
