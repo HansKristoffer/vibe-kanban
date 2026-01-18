@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE inbox_items\n               SET outbound_pr_merged_at = datetime('now', 'subsec'),\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f298f2049b0bf745c1d6936175bc10895e66039698d7ecef7bbac903b3012b46"
+}

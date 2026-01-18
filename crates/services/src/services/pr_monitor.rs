@@ -3,7 +3,9 @@ use std::time::Duration;
 use db::{
     DBService,
     models::{
+        inbox_item::InboxItem,
         merge::{Merge, MergeStatus, PrMerge},
+        project_integrations::ProjectIntegrations,
         task::{Task, TaskStatus},
         workspace::{Workspace, WorkspaceError},
     },
@@ -17,6 +19,8 @@ use tracing::{debug, error, info};
 use crate::services::{
     analytics::AnalyticsContext,
     git_host::{self, GitHostError, GitHostProvider},
+    inbox_integrations::linear_update_issue_state,
+    inbox_outbound::post_pr_merged_if_needed,
     share::SharePublisher,
 };
 
@@ -124,6 +128,48 @@ impl PrMonitorService {
                     pr_merge.pr_info.number, workspace.task_id
                 );
                 Task::update_status(&self.db.pool, workspace.task_id, TaskStatus::Done).await?;
+
+                if let Ok(Some(task)) = Task::find_by_id(&self.db.pool, workspace.task_id).await {
+                    if let Ok(Some(inbox_item)) =
+                        InboxItem::find_by_task_id(&self.db.pool, task.id).await
+                    {
+                        if let Ok(Some(integrations)) =
+                            ProjectIntegrations::find_by_project_id(
+                                &self.db.pool,
+                                task.project_id,
+                            )
+                            .await
+                        {
+                            if let (Some(api_key), Some(issue_id), Some(state_id)) = (
+                                integrations.linear_api_key.as_deref(),
+                                inbox_item
+                                    .linear_issue_id
+                                    .as_deref()
+                                    .or_else(|| {
+                                        if matches!(
+                                            inbox_item.source,
+                                            db::models::inbox_item::InboxSource::Linear
+                                        ) {
+                                            Some(inbox_item.source_item_id.as_str())
+                                        } else {
+                                            None
+                                        }
+                                    }),
+                                integrations.linear_state_id_done.as_deref(),
+                            ) {
+                                let _ = linear_update_issue_state(api_key, issue_id, state_id).await;
+                            }
+
+                            post_pr_merged_if_needed(
+                                &self.db.pool,
+                                &integrations,
+                                &inbox_item,
+                                &pr_merge.pr_info.url,
+                            )
+                            .await;
+                        }
+                    }
+                }
 
                 // Archive workspace unless pinned
                 if !workspace.pinned {

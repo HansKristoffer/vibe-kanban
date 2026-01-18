@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT project_id as \"project_id!: Uuid\",\n                      source as \"source!: InboxSourceCursorType\",\n                      cursor,\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM inbox_source_cursors\n               WHERE project_id = $1 AND source = $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "source!: InboxSourceCursorType",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "cursor",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "be9222b6dfa2d5ab3ec8a33955a10772ed2695330c44aea18f5a1148afb4831a"
+}

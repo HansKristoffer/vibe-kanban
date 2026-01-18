@@ -7,8 +7,10 @@ use axum::{
 };
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
+    inbox_item::InboxItem,
     merge::{Merge, MergeStatus},
     repo::{Repo, RepoError},
+    project_integrations::ProjectIntegrations,
     session::{CreateSession, Session},
     task::{Task, TaskStatus},
     workspace::{Workspace, WorkspaceError},
@@ -26,6 +28,7 @@ use services::services::{
     git_host::{
         self, CreatePrRequest, GitHostError, GitHostProvider, ProviderKind, UnifiedPrComment,
     },
+    inbox_outbound::post_pr_ready_if_needed,
 };
 use ts_rs::TS;
 use utils::response::ApiResponse;
@@ -326,6 +329,17 @@ pub async fn create_pr(
                 tracing::error!("Failed to update workspace PR status: {}", e);
             }
 
+            if let Ok(Some(task)) = workspace.parent_task(pool).await {
+                if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(pool, task.id).await {
+                    if let Ok(Some(integrations)) =
+                        ProjectIntegrations::find_by_project_id(pool, task.project_id).await
+                    {
+                        post_pr_ready_if_needed(pool, &integrations, &inbox_item, &pr_info.url)
+                            .await;
+                    }
+                }
+            }
+
             // Auto-open PR in browser
             if let Err(e) = utils::browser::open_browser(&pr_info.url).await {
                 tracing::warn!("Failed to open PR in browser: {}", e);
@@ -468,6 +482,14 @@ pub async fn attach_existing_pr(
             &pr_info.url,
         )
         .await?;
+
+        if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(pool, task.id).await {
+            if let Ok(Some(integrations)) =
+                ProjectIntegrations::find_by_project_id(pool, task.project_id).await
+            {
+                post_pr_ready_if_needed(pool, &integrations, &inbox_item, &pr_info.url).await;
+            }
+        }
 
         // Update status if not open
         if !matches!(pr_info.status, MergeStatus::Open) {

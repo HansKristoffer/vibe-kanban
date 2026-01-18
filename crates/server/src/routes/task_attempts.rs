@@ -25,8 +25,10 @@ use axum::{
 use db::models::{
     coding_agent_turn::CodingAgentTurn,
     execution_process::{ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus},
+    inbox_item::InboxItem,
     merge::{Merge, MergeStatus, PrMerge, PullRequestInfo},
     project::SearchResult,
+    project_integrations::ProjectIntegrations,
     repo::{Repo, RepoError},
     session::{CreateSession, Session},
     task::{Task, TaskRelationships, TaskStatus},
@@ -52,6 +54,7 @@ use services::services::{
     container::ContainerService,
     file_search::SearchQuery,
     git::{ConflictOp, GitCliError, GitServiceError},
+    inbox_outbound::post_started_if_needed,
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
@@ -256,6 +259,14 @@ pub async fn create_task_attempt(
         .await
     {
         tracing::error!("Failed to start task attempt: {}", err);
+    }
+
+    if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(pool, task.id).await {
+        if let Ok(Some(integrations)) =
+            ProjectIntegrations::find_by_project_id(pool, task.project_id).await
+        {
+            post_started_if_needed(pool, &integrations, &inbox_item).await;
+        }
     }
 
     deployment

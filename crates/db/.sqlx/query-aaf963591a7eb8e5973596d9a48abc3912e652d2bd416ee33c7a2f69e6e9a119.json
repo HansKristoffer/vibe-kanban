@@ -1,0 +1,164 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT project_id as \"project_id!: Uuid\",\n                      webhook_token,\n                      linear_api_key,\n                      linear_team_id,\n                      linear_state_id_todo,\n                      linear_state_id_inprogress,\n                      linear_state_id_inreview,\n                      linear_state_id_done,\n                      linear_state_id_cancelled,\n                      linear_webhook_secret,\n                      intercom_access_token,\n                      intercom_webhook_secret,\n                      intercom_admin_id,\n                      modjo_api_key,\n                      modjo_webhook_secret,\n                      posthog_webhook_secret,\n                      sentry_webhook_secret,\n                      posthog_api_key,\n                      posthog_host,\n                      posthog_project_id,\n                      sentry_api_token,\n                      sentry_org_slug,\n                      sentry_project_slug,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM project_integrations\n               WHERE webhook_token = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "webhook_token",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_api_key",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_team_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_state_id_todo",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_state_id_inprogress",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_state_id_inreview",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_state_id_done",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_state_id_cancelled",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "linear_webhook_secret",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "intercom_access_token",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "intercom_webhook_secret",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "intercom_admin_id",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "modjo_api_key",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "modjo_webhook_secret",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "posthog_webhook_secret",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "sentry_webhook_secret",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "posthog_api_key",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "posthog_host",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "posthog_project_id",
+        "ordinal": 19,
+        "type_info": "Text"
+      },
+      {
+        "name": "sentry_api_token",
+        "ordinal": 20,
+        "type_info": "Text"
+      },
+      {
+        "name": "sentry_org_slug",
+        "ordinal": 21,
+        "type_info": "Text"
+      },
+      {
+        "name": "sentry_project_slug",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 23,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 24,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "aaf963591a7eb8e5973596d9a48abc3912e652d2bd416ee33c7a2f69e6e9a119"
+}

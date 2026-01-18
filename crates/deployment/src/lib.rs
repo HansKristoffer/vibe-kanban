@@ -27,6 +27,7 @@ use services::services::{
     filesystem_watcher::FilesystemWatcherError,
     git::{GitService, GitServiceError},
     image::{ImageError, ImageService},
+    inbox_poller::InboxPollerService,
     pr_monitor::PrMonitorService,
     project::ProjectService,
     queued_message::QueuedMessageService,
@@ -134,6 +135,11 @@ pub trait Deployment: Clone + Send + Sync + 'static {
             });
         let publisher = self.share_publisher().ok();
         PrMonitorService::spawn(db, analytics, publisher).await
+    }
+
+    async fn spawn_inbox_poller_service(&self) -> tokio::task::JoinHandle<()> {
+        let db = self.db().clone();
+        InboxPollerService::spawn(db).await
     }
 
     async fn track_if_analytics_allowed(&self, event_name: &str, properties: Value) {

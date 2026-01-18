@@ -17,7 +17,9 @@ pub mod health;
 pub mod images;
 pub mod oauth;
 pub mod organizations;
+pub mod project_integrations;
 pub mod projects;
+pub mod inbox;
 pub mod repo;
 pub mod scratch;
 pub mod sessions;
@@ -26,6 +28,7 @@ pub mod tags;
 pub mod task_attempts;
 pub mod tasks;
 pub mod terminal;
+pub mod webhooks;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Create routers with different middleware layers
@@ -44,10 +47,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(filesystem::router())
         .merge(repo::router())
         .merge(events::router(&deployment))
+        .merge(inbox::router(&deployment))
         .merge(approvals::router())
         .merge(scratch::router(&deployment))
         .merge(sessions::router(&deployment))
         .merge(terminal::router())
+        .merge(webhooks::router(&deployment))
         .nest("/images", images::routes())
         .with_state(deployment);
 

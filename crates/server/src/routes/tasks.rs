@@ -14,6 +14,8 @@ use axum::{
 };
 use db::models::{
     image::TaskImage,
+    inbox_item::InboxItem,
+    project_integrations::ProjectIntegrations,
     repo::{Repo, RepoError},
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     workspace::{CreateWorkspace, Workspace},
@@ -24,7 +26,11 @@ use executors::profile::ExecutorProfileId;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use services::services::{
-    container::ContainerService, share::ShareError, workspace_manager::WorkspaceManager,
+    container::ContainerService,
+    inbox_integrations::linear_update_issue_state,
+    inbox_outbound::post_started_if_needed,
+    share::ShareError,
+    workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
@@ -255,6 +261,14 @@ pub async fn create_task_and_start(
         )
         .await;
 
+    if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(pool, task.id).await {
+        if let Ok(Some(integrations)) =
+            ProjectIntegrations::find_by_project_id(pool, task.project_id).await
+        {
+            post_started_if_needed(pool, &integrations, &inbox_item).await;
+        }
+    }
+
     let task = Task::find_by_id(pool, task.id)
         .await?
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
@@ -298,6 +312,44 @@ pub async fn update_task(
         parent_workspace_id,
     )
     .await?;
+
+    if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(&deployment.db().pool, task.id).await {
+        if let Ok(Some(integrations)) =
+            ProjectIntegrations::find_by_project_id(&deployment.db().pool, task.project_id).await
+        {
+            let issue_id = inbox_item
+                .linear_issue_id
+                .as_deref()
+                .or_else(|| {
+                    if matches!(inbox_item.source, db::models::inbox_item::InboxSource::Linear) {
+                        Some(inbox_item.source_item_id.as_str())
+                    } else {
+                        None
+                    }
+                });
+            let state_id = match task.status {
+                db::models::task::TaskStatus::Todo => integrations.linear_state_id_todo.as_deref(),
+                db::models::task::TaskStatus::InProgress => {
+                    integrations.linear_state_id_inprogress.as_deref()
+                }
+                db::models::task::TaskStatus::InReview => {
+                    integrations.linear_state_id_inreview.as_deref()
+                }
+                db::models::task::TaskStatus::Done => integrations.linear_state_id_done.as_deref(),
+                db::models::task::TaskStatus::Cancelled => {
+                    integrations.linear_state_id_cancelled.as_deref()
+                }
+            };
+
+            if let (Some(api_key), Some(issue_id), Some(state_id)) = (
+                integrations.linear_api_key.as_deref(),
+                issue_id,
+                state_id,
+            ) {
+                let _ = linear_update_issue_state(api_key, issue_id, state_id).await;
+            }
+        }
+    }
 
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::delete_by_task_id(&deployment.db().pool, task.id).await?;

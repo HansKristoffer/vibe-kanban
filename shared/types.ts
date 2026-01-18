@@ -26,6 +26,28 @@ score: bigint, };
 
 export type SearchMatchType = "FileName" | "DirectoryName" | "FullPath";
 
+export type ProjectIntegrations = { project_id: string, webhook_token: string, linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, created_at: Date, updated_at: Date, };
+
+export type UpsertProjectIntegrations = { webhook_token: string, linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, };
+
+export type InboxSource = "linear" | "intercom" | "modjo" | "manual" | "posthog" | "sentry";
+
+export type InboxItemKind = "bug" | "feature" | "other";
+
+export type InboxItemStatus = "pending" | "accepted" | "declined" | "ignored";
+
+export type InboxItem = { id: string, project_id: string, source: InboxSource, source_item_id: string, source_url: string | null, title: string, raw_payload_json: string | null, kind: InboxItemKind, status: InboxItemStatus, prd_markdown: string | null, task_id: string | null, linear_issue_id: string | null, linear_issue_url: string | null, action_token: string, outbound_registered_at: Date, outbound_started_at: Date, outbound_pr_created_at: Date, outbound_pr_merged_at: Date, outbound_last_error: string | null, created_at: Date, updated_at: Date, };
+
+export type CreateInboxItem = { project_id: string, source: InboxSource, source_item_id: string, source_url: string | null, title: string, raw_payload_json: string | null, kind: InboxItemKind, status: InboxItemStatus, prd_markdown: string | null, action_token: string, linear_issue_id: string | null, linear_issue_url: string | null, };
+
+export type UpsertInboxItem = { project_id: string, source: InboxSource, source_item_id: string, source_url: string | null, title: string, raw_payload_json: string | null, kind: InboxItemKind, status: InboxItemStatus, prd_markdown: string | null, action_token: string, linear_issue_id: string | null, linear_issue_url: string | null, };
+
+export type UpdateInboxItem = { title: string | null, kind: InboxItemKind | null, status: InboxItemStatus | null, prd_markdown: string | null, task_id: string | null, linear_issue_id: string | null, linear_issue_url: string | null, outbound_last_error: string | null, };
+
+export type InboxSourceCursorType = "linear" | "intercom" | "modjo" | "manual" | "posthog" | "sentry";
+
+export type InboxSourceCursor = { project_id: string, source: InboxSourceCursorType, cursor: string | null, updated_at: Date, };
+
 export type Repo = { id: string, path: string, name: string, display_name: string, setup_script: string | null, cleanup_script: string | null, copy_files: string | null, parallel_setup_script: boolean, dev_server_script: string | null, created_at: Date, updated_at: Date, };
 
 export type UpdateRepo = { display_name?: string | null, setup_script?: string | null, cleanup_script?: string | null, copy_files?: string | null, parallel_setup_script?: boolean | null, dev_server_script?: string | null, };
@@ -253,6 +275,24 @@ export type AssignSharedTaskRequest = { new_assignee_user_id: string | null, };
 export type ShareTaskResponse = { shared_task_id: string, };
 
 export type CreateAndStartTaskRequest = { task: CreateTask, executor_profile_id: ExecutorProfileId, repos: Array<WorkspaceRepoInput>, ralph: RalphModeConfig | null, };
+
+export type ProjectIntegrationsResponse = { webhook_token: string, webhook_urls: WebhookUrls | null, linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, linear_api_key_configured: boolean, linear_webhook_secret_configured: boolean, intercom_access_token_configured: boolean, intercom_webhook_secret_configured: boolean, modjo_api_key_configured: boolean, modjo_webhook_secret_configured: boolean, posthog_webhook_secret_configured: boolean, sentry_webhook_secret_configured: boolean, posthog_api_key_configured: boolean, sentry_api_token_configured: boolean, };
+
+export type UpdateProjectIntegrationsRequest = { linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, clear_linear_api_key: boolean | null, clear_linear_webhook_secret: boolean | null, clear_intercom_access_token: boolean | null, clear_intercom_webhook_secret: boolean | null, clear_modjo_api_key: boolean | null, clear_modjo_webhook_secret: boolean | null, clear_posthog_webhook_secret: boolean | null, clear_sentry_webhook_secret: boolean | null, clear_posthog_api_key: boolean | null, clear_sentry_api_token: boolean | null, };
+
+export type LinearTeam = { id: string, name: string, };
+
+export type LinearWorkflowState = { id: string, name: string, type: string, };
+
+export type LinearStatesQuery = { team_id: string, };
+
+export type WebhookUrls = { linear: string, intercom: string, modjo: string, manual: string, posthog: string, sentry: string, };
+
+export type InboxQuery = { project_id: string, status: InboxItemStatus | null, };
+
+export type CreateInboxItemRequest = { project_id: string, title: string, body: string, source_url: string | null, };
+
+export type AcceptInboxResponse = { task_id: string, };
 
 export type CreatePrApiRequest = { title: string, body: string | null, target_branch: string | null, draft: boolean | null, repo_id: string, auto_generate_description: boolean, };
 

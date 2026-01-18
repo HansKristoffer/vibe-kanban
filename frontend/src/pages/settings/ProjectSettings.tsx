@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isEqual } from 'lodash';
 import {
   Card,
@@ -25,9 +25,17 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
-import { projectsApi } from '@/lib/api';
+import { projectIntegrationsApi, projectsApi } from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
-import type { Project, Repo, UpdateProject } from 'shared/types';
+import type {
+  LinearTeam,
+  LinearWorkflowState,
+  Project,
+  ProjectIntegrationsResponse,
+  Repo,
+  UpdateProject,
+  UpdateProjectIntegrationsRequest,
+} from 'shared/types';
 
 interface ProjectFormState {
   name: string;
@@ -71,6 +79,37 @@ export function ProjectSettings() {
   const [repoError, setRepoError] = useState<string | null>(null);
   const [addingRepo, setAddingRepo] = useState(false);
   const [deletingRepoId, setDeletingRepoId] = useState<string | null>(null);
+
+  // Integrations state
+  const [integrations, setIntegrations] =
+    useState<ProjectIntegrationsResponse | null>(null);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [integrationsError, setIntegrationsError] = useState<string | null>(null);
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
+
+  const [linearApiKey, setLinearApiKey] = useState('');
+  const [linearTeamId, setLinearTeamId] = useState('');
+  const [linearStateTodo, setLinearStateTodo] = useState('');
+  const [linearStateInProgress, setLinearStateInProgress] = useState('');
+  const [linearStateInReview, setLinearStateInReview] = useState('');
+  const [linearStateDone, setLinearStateDone] = useState('');
+  const [linearStateCancelled, setLinearStateCancelled] = useState('');
+  const [linearWebhookSecret, setLinearWebhookSecret] = useState('');
+
+  const [intercomAccessToken, setIntercomAccessToken] = useState('');
+  const [intercomAdminId, setIntercomAdminId] = useState('');
+  const [intercomWebhookSecret, setIntercomWebhookSecret] = useState('');
+
+  const [modjoApiKey, setModjoApiKey] = useState('');
+  const [modjoWebhookSecret, setModjoWebhookSecret] = useState('');
+  const [posthogWebhookSecret, setPosthogWebhookSecret] = useState('');
+  const [sentryWebhookSecret, setSentryWebhookSecret] = useState('');
+  const [posthogApiKey, setPosthogApiKey] = useState('');
+  const [posthogHost, setPosthogHost] = useState('');
+  const [posthogProjectId, setPosthogProjectId] = useState('');
+  const [sentryApiToken, setSentryApiToken] = useState('');
+  const [sentryOrgSlug, setSentryOrgSlug] = useState('');
+  const [sentryProjectSlug, setSentryProjectSlug] = useState('');
 
   // Check for unsaved changes (project name)
   const hasUnsavedChanges = useMemo(() => {
@@ -199,6 +238,55 @@ export function ProjectSettings() {
       .finally(() => setLoadingRepos(false));
   }, [selectedProjectId]);
 
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setIntegrations(null);
+      return;
+    }
+
+    setIntegrationsLoading(true);
+    setIntegrationsError(null);
+    projectIntegrationsApi
+      .get(selectedProjectId)
+      .then((data) => {
+        setIntegrations(data);
+        setLinearTeamId(data.linear_team_id ?? '');
+        setLinearStateTodo(data.linear_state_id_todo ?? '');
+        setLinearStateInProgress(data.linear_state_id_inprogress ?? '');
+        setLinearStateInReview(data.linear_state_id_inreview ?? '');
+        setLinearStateDone(data.linear_state_id_done ?? '');
+        setLinearStateCancelled(data.linear_state_id_cancelled ?? '');
+        setPosthogHost(data.posthog_host ?? '');
+        setPosthogProjectId(data.posthog_project_id ?? '');
+        setSentryOrgSlug(data.sentry_org_slug ?? '');
+        setSentryProjectSlug(data.sentry_project_slug ?? '');
+      })
+      .catch((err) => {
+        setIntegrationsError(
+          err instanceof Error ? err.message : 'Failed to load integrations'
+        );
+        setIntegrations(null);
+      })
+      .finally(() => setIntegrationsLoading(false));
+  }, [selectedProjectId]);
+
+  const linearTeamsQuery = useQuery<LinearTeam[]>({
+    queryKey: ['linear-teams', selectedProjectId],
+    enabled:
+      Boolean(selectedProjectId) &&
+      Boolean(integrations?.linear_api_key_configured),
+    queryFn: () => projectIntegrationsApi.getLinearTeams(selectedProjectId),
+  });
+
+  const linearStatesQuery = useQuery<LinearWorkflowState[]>({
+    queryKey: ['linear-states', selectedProjectId, linearTeamId],
+    enabled:
+      Boolean(selectedProjectId) &&
+      Boolean(linearTeamId) &&
+      Boolean(integrations?.linear_api_key_configured),
+    queryFn: () => projectIntegrationsApi.getLinearStates(selectedProjectId, linearTeamId),
+  });
+
   const handleAddRepository = async () => {
     if (!selectedProjectId) return;
 
@@ -302,6 +390,102 @@ export function ProjectSettings() {
       setError(t('settings.projects.save.error'));
       console.error('Error saving project settings:', err);
       setSaving(false);
+    }
+  };
+
+  const handleSaveIntegrations = async () => {
+    if (!selectedProjectId) return;
+    setSavingIntegrations(true);
+    setIntegrationsError(null);
+    try {
+      const payload: UpdateProjectIntegrationsRequest = {
+        linear_api_key: null,
+        linear_webhook_secret: null,
+        intercom_access_token: null,
+        intercom_webhook_secret: null,
+        modjo_api_key: null,
+        modjo_webhook_secret: null,
+        posthog_webhook_secret: null,
+        sentry_webhook_secret: null,
+        posthog_api_key: null,
+        posthog_host: posthogHost || null,
+        posthog_project_id: posthogProjectId || null,
+        sentry_api_token: null,
+        sentry_org_slug: sentryOrgSlug || null,
+        sentry_project_slug: sentryProjectSlug || null,
+        clear_linear_api_key: null,
+        clear_linear_webhook_secret: null,
+        clear_intercom_access_token: null,
+        clear_intercom_webhook_secret: null,
+        clear_modjo_api_key: null,
+        clear_modjo_webhook_secret: null,
+        clear_posthog_webhook_secret: null,
+        clear_sentry_webhook_secret: null,
+        clear_posthog_api_key: null,
+        clear_sentry_api_token: null,
+        linear_team_id: linearTeamId || null,
+        linear_state_id_todo: linearStateTodo || null,
+        linear_state_id_inprogress: linearStateInProgress || null,
+        linear_state_id_inreview: linearStateInReview || null,
+        linear_state_id_done: linearStateDone || null,
+        linear_state_id_cancelled: linearStateCancelled || null,
+        intercom_admin_id: intercomAdminId || null,
+      };
+
+      if (linearApiKey.trim()) {
+        payload.linear_api_key = linearApiKey.trim();
+      }
+      if (linearWebhookSecret.trim()) {
+        payload.linear_webhook_secret = linearWebhookSecret.trim();
+      }
+      if (intercomAccessToken.trim()) {
+        payload.intercom_access_token = intercomAccessToken.trim();
+      }
+      if (intercomWebhookSecret.trim()) {
+        payload.intercom_webhook_secret = intercomWebhookSecret.trim();
+      }
+      if (modjoApiKey.trim()) {
+        payload.modjo_api_key = modjoApiKey.trim();
+      }
+      if (modjoWebhookSecret.trim()) {
+        payload.modjo_webhook_secret = modjoWebhookSecret.trim();
+      }
+      if (posthogWebhookSecret.trim()) {
+        payload.posthog_webhook_secret = posthogWebhookSecret.trim();
+      }
+      if (sentryWebhookSecret.trim()) {
+        payload.sentry_webhook_secret = sentryWebhookSecret.trim();
+      }
+      if (posthogApiKey.trim()) {
+        payload.posthog_api_key = posthogApiKey.trim();
+      }
+      if (sentryApiToken.trim()) {
+        payload.sentry_api_token = sentryApiToken.trim();
+      }
+
+      const updated = await projectIntegrationsApi.update(
+        selectedProjectId,
+        payload
+      );
+      setIntegrations(updated);
+      setLinearApiKey('');
+      setLinearWebhookSecret('');
+      setIntercomAccessToken('');
+      setIntercomWebhookSecret('');
+      setModjoApiKey('');
+      setModjoWebhookSecret('');
+      setPosthogWebhookSecret('');
+      setSentryWebhookSecret('');
+      setPosthogApiKey('');
+      setSentryApiToken('');
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setIntegrationsError(
+        err instanceof Error ? err.message : 'Failed to save integrations'
+      );
+    } finally {
+      setSavingIntegrations(false);
     }
   };
 
@@ -457,6 +641,393 @@ export function ProjectSettings() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Integrations (Inbox)</CardTitle>
+              <CardDescription>
+                Configure Linear, Intercom, and Modjo for the Inbox.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {integrationsError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{integrationsError}</AlertDescription>
+                </Alert>
+              )}
+
+              {integrationsLoading && (
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Loading integrations...
+                </div>
+              )}
+
+              {integrations && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Linear API Key</Label>
+                      <Input
+                        type="password"
+                        value={linearApiKey}
+                        onChange={(e) => setLinearApiKey(e.target.value)}
+                        placeholder={
+                          integrations.linear_api_key_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear Webhook Secret</Label>
+                      <Input
+                        type="password"
+                        value={linearWebhookSecret}
+                        onChange={(e) => setLinearWebhookSecret(e.target.value)}
+                        placeholder={
+                          integrations.linear_webhook_secret_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Intercom Access Token</Label>
+                      <Input
+                        type="password"
+                        value={intercomAccessToken}
+                        onChange={(e) => setIntercomAccessToken(e.target.value)}
+                        placeholder={
+                          integrations.intercom_access_token_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Intercom Admin ID</Label>
+                      <Input
+                        value={intercomAdminId}
+                        onChange={(e) => setIntercomAdminId(e.target.value)}
+                        placeholder="Admin ID for internal notes"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Intercom Webhook Secret</Label>
+                      <Input
+                        type="password"
+                        value={intercomWebhookSecret}
+                        onChange={(e) => setIntercomWebhookSecret(e.target.value)}
+                        placeholder={
+                          integrations.intercom_webhook_secret_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Modjo API Key</Label>
+                      <Input
+                        type="password"
+                        value={modjoApiKey}
+                        onChange={(e) => setModjoApiKey(e.target.value)}
+                        placeholder={
+                          integrations.modjo_api_key_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Modjo Webhook Secret</Label>
+                      <Input
+                        type="password"
+                        value={modjoWebhookSecret}
+                        onChange={(e) => setModjoWebhookSecret(e.target.value)}
+                        placeholder={
+                          integrations.modjo_webhook_secret_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PostHog Webhook Secret</Label>
+                      <Input
+                        type="password"
+                        value={posthogWebhookSecret}
+                        onChange={(e) => setPosthogWebhookSecret(e.target.value)}
+                        placeholder={
+                          integrations.posthog_webhook_secret_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PostHog API Key</Label>
+                      <Input
+                        type="password"
+                        value={posthogApiKey}
+                        onChange={(e) => setPosthogApiKey(e.target.value)}
+                        placeholder={
+                          integrations.posthog_api_key_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PostHog Host</Label>
+                      <Input
+                        value={posthogHost}
+                        onChange={(e) => setPosthogHost(e.target.value)}
+                        placeholder="https://app.posthog.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PostHog Project ID</Label>
+                      <Input
+                        value={posthogProjectId}
+                        onChange={(e) => setPosthogProjectId(e.target.value)}
+                        placeholder="Project ID for event API"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sentry Webhook Secret</Label>
+                      <Input
+                        type="password"
+                        value={sentryWebhookSecret}
+                        onChange={(e) => setSentryWebhookSecret(e.target.value)}
+                        placeholder={
+                          integrations.sentry_webhook_secret_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sentry API Token</Label>
+                      <Input
+                        type="password"
+                        value={sentryApiToken}
+                        onChange={(e) => setSentryApiToken(e.target.value)}
+                        placeholder={
+                          integrations.sentry_api_token_configured
+                            ? 'Configured'
+                            : 'Not set'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sentry Org Slug</Label>
+                      <Input
+                        value={sentryOrgSlug}
+                        onChange={(e) => setSentryOrgSlug(e.target.value)}
+                        placeholder="your-org"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sentry Project Slug</Label>
+                      <Input
+                        value={sentryProjectSlug}
+                        onChange={(e) => setSentryProjectSlug(e.target.value)}
+                        placeholder="your-project"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Linear Team</Label>
+                      <Select
+                        value={linearTeamId}
+                        onValueChange={setLinearTeamId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearTeamsQuery.data?.length ? (
+                            linearTeamsQuery.data.map((team) => (
+                              <SelectItem key={team.id} value={team.id}>
+                                {team.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-teams" disabled>
+                              No teams available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear Backlog (Todo)</Label>
+                      <Select
+                        value={linearStateTodo}
+                        onValueChange={setLinearStateTodo}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearStatesQuery.data?.length ? (
+                            linearStatesQuery.data.map((state) => (
+                              <SelectItem key={state.id} value={state.id}>
+                                {state.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-states" disabled>
+                              No states available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear In Progress</Label>
+                      <Select
+                        value={linearStateInProgress}
+                        onValueChange={setLinearStateInProgress}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearStatesQuery.data?.length ? (
+                            linearStatesQuery.data.map((state) => (
+                              <SelectItem key={state.id} value={state.id}>
+                                {state.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-states" disabled>
+                              No states available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear In Review</Label>
+                      <Select
+                        value={linearStateInReview}
+                        onValueChange={setLinearStateInReview}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearStatesQuery.data?.length ? (
+                            linearStatesQuery.data.map((state) => (
+                              <SelectItem key={state.id} value={state.id}>
+                                {state.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-states" disabled>
+                              No states available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear Done</Label>
+                      <Select
+                        value={linearStateDone}
+                        onValueChange={setLinearStateDone}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearStatesQuery.data?.length ? (
+                            linearStatesQuery.data.map((state) => (
+                              <SelectItem key={state.id} value={state.id}>
+                                {state.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-states" disabled>
+                              No states available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Linear Cancelled</Label>
+                      <Select
+                        value={linearStateCancelled}
+                        onValueChange={setLinearStateCancelled}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {linearStatesQuery.data?.length ? (
+                            linearStatesQuery.data.map((state) => (
+                              <SelectItem key={state.id} value={state.id}>
+                                {state.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-states" disabled>
+                              No states available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {integrations.webhook_urls && (
+                    <div className="space-y-2 text-sm">
+                      <div className="font-medium">Webhook URLs</div>
+                      <div className="text-muted-foreground">
+                        Linear: {integrations.webhook_urls.linear}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Intercom: {integrations.webhook_urls.intercom}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Modjo: {integrations.webhook_urls.modjo}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Manual: {integrations.webhook_urls.manual}
+                      </div>
+                      <div className="text-muted-foreground">
+                        PostHog: {integrations.webhook_urls.posthog}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Sentry: {integrations.webhook_urls.sentry}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleSaveIntegrations}
+                      disabled={savingIntegrations}
+                    >
+                      {savingIntegrations ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save integrations'
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE inbox_items\n               SET outbound_started_at = datetime('now', 'subsec'),\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "1db2bf89a5ccfd6d5c3a62356ae76bd4206a406992f9fd6b5a73142015cf67fc"
+}

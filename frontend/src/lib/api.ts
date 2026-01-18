@@ -16,12 +16,19 @@ import {
   ExecutionProcess,
   ExecutionProcessRepoState,
   GitBranch,
+  InboxItem,
+  InboxItemStatus,
   Project,
+  ProjectIntegrationsResponse,
+  LinearTeam,
+  LinearWorkflowState,
   Repo,
   RepoWithTargetBranch,
   CreateProject,
   CreateProjectRepo,
+  CreateInboxItemRequest,
   UpdateRepo,
+  UpdateProjectIntegrationsRequest,
   SearchMode,
   SearchResult,
   ShareTaskResponse,
@@ -33,6 +40,7 @@ import {
   UpdateProject,
   UpdateTask,
   UpdateTag,
+  AcceptInboxResponse,
   UserSystemInfo,
   McpServerQuery,
   UpdateMcpServersBody,
@@ -361,6 +369,83 @@ export const projectsApi = {
       }
     );
     return handleApiResponse<void>(response);
+  },
+};
+
+export const projectIntegrationsApi = {
+  get: async (projectId: string): Promise<ProjectIntegrationsResponse> => {
+    const response = await makeRequest(`/api/projects/${projectId}/integrations`);
+    return handleApiResponse<ProjectIntegrationsResponse>(response);
+  },
+
+  update: async (
+    projectId: string,
+    data: UpdateProjectIntegrationsRequest
+  ): Promise<ProjectIntegrationsResponse> => {
+    const response = await makeRequest(`/api/projects/${projectId}/integrations`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectIntegrationsResponse>(response);
+  },
+
+  getLinearTeams: async (projectId: string): Promise<LinearTeam[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/integrations/linear/teams`
+    );
+    return handleApiResponse<LinearTeam[]>(response);
+  },
+
+  getLinearStates: async (
+    projectId: string,
+    teamId: string
+  ): Promise<LinearWorkflowState[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/integrations/linear/states?team_id=${encodeURIComponent(
+        teamId
+      )}`
+    );
+    return handleApiResponse<LinearWorkflowState[]>(response);
+  },
+};
+
+export const inboxApi = {
+  list: async (
+    projectId: string,
+    status?: InboxItemStatus
+  ): Promise<InboxItem[]> => {
+    const statusParam = status ? `&status=${encodeURIComponent(status)}` : '';
+    const response = await makeRequest(
+      `/api/inbox?project_id=${encodeURIComponent(projectId)}${statusParam}`
+    );
+    return handleApiResponse<InboxItem[]>(response);
+  },
+
+  get: async (inboxId: string): Promise<InboxItem> => {
+    const response = await makeRequest(`/api/inbox/${inboxId}`);
+    return handleApiResponse<InboxItem>(response);
+  },
+
+  create: async (payload: CreateInboxItemRequest): Promise<InboxItem> => {
+    const response = await makeRequest('/api/inbox', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return handleApiResponse<InboxItem>(response);
+  },
+
+  accept: async (inboxId: string): Promise<AcceptInboxResponse> => {
+    const response = await makeRequest(`/api/inbox/${inboxId}/accept`, {
+      method: 'POST',
+    });
+    return handleApiResponse<AcceptInboxResponse>(response);
+  },
+
+  decline: async (inboxId: string): Promise<InboxItem> => {
+    const response = await makeRequest(`/api/inbox/${inboxId}/decline`, {
+      method: 'POST',
+    });
+    return handleApiResponse<InboxItem>(response);
   },
 };
 

@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod anthropic;
 pub mod approvals;
 pub mod auth;
 pub mod config;
@@ -12,6 +13,10 @@ pub mod filesystem_watcher;
 pub mod git;
 pub mod git_host;
 pub mod image;
+pub mod inbox_integrations;
+pub mod inbox_outbound;
+pub mod inbox_poller;
+pub mod posthog_sentry_enrichment;
 pub mod notification;
 pub mod oauth_credentials;
 pub mod pr_monitor;
