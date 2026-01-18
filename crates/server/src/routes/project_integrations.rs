@@ -137,6 +137,24 @@ struct GraphqlResponse<T> {
     errors: Option<Vec<GraphqlError>>,
 }
 
+fn linear_authorization_header_value(raw_token: &str) -> String {
+    let trimmed = raw_token.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let (provided_bearer, token) = if lower.starts_with("bearer ") {
+        (true, trimmed[7..].trim())
+    } else {
+        (false, trimmed)
+    };
+
+    if token.starts_with("lin_api_") {
+        token.to_string()
+    } else if token.starts_with("lin_oauth_") || provided_bearer {
+        format!("Bearer {}", token)
+    } else {
+        token.to_string()
+    }
+}
+
 async fn linear_graphql<T: DeserializeOwned>(
     api_key: &str,
     query: &str,
@@ -145,7 +163,7 @@ async fn linear_graphql<T: DeserializeOwned>(
     let client = reqwest::Client::new();
     let response = client
         .post("https://api.linear.app/graphql")
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", linear_authorization_header_value(api_key))
         .json(&GraphqlRequest { query, variables })
         .send()
         .await

@@ -17,6 +17,7 @@ pub mod health;
 pub mod images;
 pub mod oauth;
 pub mod organizations;
+pub mod project_env_vars;
 pub mod project_integrations;
 pub mod projects;
 pub mod inbox;
@@ -28,6 +29,7 @@ pub mod tags;
 pub mod task_attempts;
 pub mod tasks;
 pub mod terminal;
+pub mod public;
 pub mod webhooks;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
@@ -47,13 +49,14 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(filesystem::router())
         .merge(repo::router())
         .merge(events::router(&deployment))
-        .merge(inbox::router(&deployment))
+        .nest("/inbox", inbox::router(&deployment))
         .merge(approvals::router())
         .merge(scratch::router(&deployment))
         .merge(sessions::router(&deployment))
         .merge(terminal::router())
-        .merge(webhooks::router(&deployment))
+        .nest("/webhooks", webhooks::router(&deployment))
         .nest("/images", images::routes())
+        .nest("/public", public::router())
         .with_state(deployment);
 
     Router::new()

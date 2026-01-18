@@ -407,6 +407,11 @@
         "unsavedChanges": "Vous avez des modifications non enregistrées",
         "discard": "Abandonner",
         "confirmSwitch": "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir changer de dépôt ? Vos modifications seront perdues."
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "Certains paramètres sont définis dans le fichier de configuration vibekanban.json de ce dépôt. Ces valeurs remplacent les paramètres de la base de données et ne peuvent pas être modifiées ici.",
+        "fieldReadOnly": "Cette valeur est définie dans vibekanban.json et ne peut pas être modifiée ici."
       }
     }
   },

@@ -25,7 +25,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
-import { projectIntegrationsApi, projectsApi } from '@/lib/api';
+import { projectIntegrationsApi, projectsApi, projectEnvVarsApi, type EnvVarEntry } from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
 import type {
   LinearTeam,
@@ -111,11 +111,35 @@ export function ProjectSettings() {
   const [sentryOrgSlug, setSentryOrgSlug] = useState('');
   const [sentryProjectSlug, setSentryProjectSlug] = useState('');
 
+  // Environment variables state
+  const [envVars, setEnvVars] = useState<EnvVarEntry[]>([]);
+  const [envVarsLoading, setEnvVarsLoading] = useState(false);
+  const [envVarsError, setEnvVarsError] = useState<string | null>(null);
+  const [envVarInputs, setEnvVarInputs] = useState<Record<string, string>>({});
+  const [savingEnvVar, setSavingEnvVar] = useState<string | null>(null);
+
   // Check for unsaved changes (project name)
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !selectedProject) return false;
     return !isEqual(draft, projectToFormState(selectedProject));
   }, [draft, selectedProject]);
+
+  const webhookUrls = useMemo(() => {
+    if (!integrations) return null;
+    if (integrations.webhook_urls) return integrations.webhook_urls;
+
+    const base = window.location.origin.replace(/\/$/, '');
+    const token = integrations.webhook_token;
+
+    return {
+      linear: `${base}/api/webhooks/linear/${token}`,
+      intercom: `${base}/api/webhooks/intercom/${token}`,
+      modjo: `${base}/api/webhooks/modjo/${token}`,
+      manual: `${base}/api/webhooks/manual/${token}`,
+      posthog: `${base}/api/webhooks/posthog/${token}`,
+      sentry: `${base}/api/webhooks/sentry/${token}`,
+    };
+  }, [integrations]);
 
   // Handle project selection from dropdown
   const handleProjectSelect = useCallback(
@@ -269,6 +293,74 @@ export function ProjectSettings() {
       })
       .finally(() => setIntegrationsLoading(false));
   }, [selectedProjectId]);
+
+  // Fetch environment variables when project changes
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setEnvVars([]);
+      setEnvVarInputs({});
+      return;
+    }
+
+    setEnvVarsLoading(true);
+    setEnvVarsError(null);
+    projectEnvVarsApi
+      .get(selectedProjectId)
+      .then((data) => {
+        setEnvVars(data.env_vars);
+        // Clear inputs when loading new data
+        setEnvVarInputs({});
+      })
+      .catch((err) => {
+        setEnvVarsError(
+          err instanceof Error ? err.message : 'Failed to load environment variables'
+        );
+        setEnvVars([]);
+      })
+      .finally(() => setEnvVarsLoading(false));
+  }, [selectedProjectId]);
+
+  const handleSaveEnvVar = async (name: string) => {
+    if (!selectedProjectId) return;
+    const value = envVarInputs[name];
+    if (!value?.trim()) return;
+
+    setSavingEnvVar(name);
+    setEnvVarsError(null);
+    try {
+      const result = await projectEnvVarsApi.update(selectedProjectId, {
+        set: { [name]: value.trim() },
+      });
+      setEnvVars(result.env_vars);
+      setEnvVarInputs((prev) => ({ ...prev, [name]: '' }));
+    } catch (err) {
+      setEnvVarsError(
+        err instanceof Error ? err.message : 'Failed to save environment variable'
+      );
+    } finally {
+      setSavingEnvVar(null);
+    }
+  };
+
+  const handleClearEnvVar = async (name: string) => {
+    if (!selectedProjectId) return;
+
+    setSavingEnvVar(name);
+    setEnvVarsError(null);
+    try {
+      const result = await projectEnvVarsApi.update(selectedProjectId, {
+        clear: [name],
+      });
+      setEnvVars(result.env_vars);
+      setEnvVarInputs((prev) => ({ ...prev, [name]: '' }));
+    } catch (err) {
+      setEnvVarsError(
+        err instanceof Error ? err.message : 'Failed to clear environment variable'
+      );
+    } finally {
+      setSavingEnvVar(null);
+    }
+  };
 
   const linearTeamsQuery = useQuery<LinearTeam[]>({
     queryKey: ['linear-teams', selectedProjectId],
@@ -987,26 +1079,32 @@ export function ProjectSettings() {
                     </div>
                   </div>
 
-                  {integrations.webhook_urls && (
+                  {webhookUrls && (
                     <div className="space-y-2 text-sm">
                       <div className="font-medium">Webhook URLs</div>
-                      <div className="text-muted-foreground">
-                        Linear: {integrations.webhook_urls.linear}
+                      {!integrations.webhook_urls && (
+                        <div className="text-xs text-muted-foreground">
+                          Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the
+                          server to show public URLs.
+                        </div>
+                      )}
+                      <div className="text-muted-foreground break-all">
+                        Linear: {webhookUrls.linear}
                       </div>
-                      <div className="text-muted-foreground">
-                        Intercom: {integrations.webhook_urls.intercom}
+                      <div className="text-muted-foreground break-all">
+                        Intercom: {webhookUrls.intercom}
                       </div>
-                      <div className="text-muted-foreground">
-                        Modjo: {integrations.webhook_urls.modjo}
+                      <div className="text-muted-foreground break-all">
+                        Modjo: {webhookUrls.modjo}
                       </div>
-                      <div className="text-muted-foreground">
-                        Manual: {integrations.webhook_urls.manual}
+                      <div className="text-muted-foreground break-all">
+                        Manual: {webhookUrls.manual}
                       </div>
-                      <div className="text-muted-foreground">
-                        PostHog: {integrations.webhook_urls.posthog}
+                      <div className="text-muted-foreground break-all">
+                        PostHog: {webhookUrls.posthog}
                       </div>
-                      <div className="text-muted-foreground">
-                        Sentry: {integrations.webhook_urls.sentry}
+                      <div className="text-muted-foreground break-all">
+                        Sentry: {webhookUrls.sentry}
                       </div>
                     </div>
                   )}
@@ -1108,6 +1206,90 @@ export function ProjectSettings() {
                     )}
                     Add Repository
                   </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Dev Server Environment Variables */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Dev Server Environment Variables</CardTitle>
+              <CardDescription>
+                Configure environment variables for the dev server. Variable names
+                are defined in your repository's vibekanban.json file.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {envVarsError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{envVarsError}</AlertDescription>
+                </Alert>
+              )}
+
+              {envVarsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    Loading environment variables...
+                  </span>
+                </div>
+              ) : envVars.length === 0 ? (
+                <div className="text-center py-4 text-sm text-muted-foreground">
+                  No environment variables defined. Add an <code className="text-xs bg-muted px-1 py-0.5 rounded">env_vars</code> array to your vibekanban.json to define allowed variables.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {envVars.map((envVar) => (
+                    <div key={envVar.name} className="space-y-2">
+                      <Label htmlFor={`env-${envVar.name}`}>{envVar.name}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id={`env-${envVar.name}`}
+                          type="password"
+                          value={envVarInputs[envVar.name] ?? ''}
+                          onChange={(e) =>
+                            setEnvVarInputs((prev) => ({
+                              ...prev,
+                              [envVar.name]: e.target.value,
+                            }))
+                          }
+                          placeholder={envVar.configured ? 'Configured' : 'Not set'}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSaveEnvVar(envVar.name)}
+                          disabled={
+                            savingEnvVar === envVar.name ||
+                            !envVarInputs[envVar.name]?.trim()
+                          }
+                        >
+                          {savingEnvVar === envVar.name ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Save'
+                          )}
+                        </Button>
+                        {envVar.configured && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleClearEnvVar(envVar.name)}
+                            disabled={savingEnvVar === envVar.name}
+                            title="Clear value"
+                          >
+                            {savingEnvVar === envVar.name ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>

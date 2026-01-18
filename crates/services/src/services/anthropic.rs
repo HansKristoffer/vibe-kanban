@@ -74,7 +74,7 @@ impl AnthropicClient {
         let model = env::var("VK_ANTHROPIC_MODEL")
             .ok()
             .filter(|m| !m.trim().is_empty())
-            .unwrap_or_else(|| "claude-3-5-sonnet-latest".to_string());
+            .unwrap_or_else(|| "claude-opus-4-5-20251101".to_string());
         Ok(Self {
             api_key,
             model,
@@ -87,22 +87,56 @@ impl AnthropicClient {
         input: &str,
     ) -> Result<AnthropicInboxResult, AnthropicError> {
         let prompt = format!(
-            "You are an assistant that triages incoming product feedback.\n\
-Return ONLY valid JSON (no markdown).\n\
-JSON schema:\n\
-{{\"actionable\":boolean,\"kind\":\"bug\"|\"feature\"|\"other\",\"title\":string,\"prd_markdown\":string,\"context_links\":[string]}}\n\
-Rules:\n\
-- actionable=false if there is no clear bug or feature request.\n\
-- title should be concise and human-friendly.\n\
-- prd_markdown should be a clear PRD-style description for a coding LLM.\n\
-\n\
-Input:\n{}\n",
+            r#"You are an assistant that triages incoming product feedback and generates detailed PRDs for coding agents.
+
+Return ONLY valid JSON (no markdown code fences).
+JSON schema:
+{{"actionable":boolean,"kind":"bug"|"feature"|"other","title":string,"prd_markdown":string,"context_links":[string]}}
+
+Rules:
+- actionable=false if there is no clear bug or feature request.
+- title should be concise and human-friendly.
+- prd_markdown should be a detailed PRD following this template:
+
+## Problem Statement
+The problem that the user is facing, from the user's perspective.
+
+## Solution
+The solution to the problem, from the user's perspective.
+
+## User Stories
+A numbered list of user stories in the format:
+1. As an <actor>, I want a <feature>, so that <benefit>
+
+Include all relevant user stories that cover the feature comprehensively.
+
+## Implementation Decisions
+Key implementation considerations including:
+- Technical clarifications
+- Architectural decisions
+- Schema changes (if applicable)
+- API contracts (if applicable)
+- Specific interactions
+
+Do NOT include specific file paths or code snippets.
+
+## Further Notes
+Any additional context or considerations.
+
+Guidelines for the PRD:
+- Be thorough and specific
+- Write for a coding LLM that will implement this feature
+- Include edge cases and error handling considerations
+- Make user stories extensive and cover all aspects
+
+Input:
+{}"#,
             input
         );
 
         let request = AnthropicRequest {
             model: &self.model,
-            max_tokens: 1200,
+            max_tokens: 4000,
             temperature: 0.0,
             messages: vec![AnthropicMessage {
                 role: "user",

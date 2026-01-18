@@ -7,6 +7,7 @@ pub mod inbox_item;
 pub mod inbox_source_cursor;
 pub mod merge;
 pub mod project;
+pub mod project_env_var;
 pub mod project_integrations;
 pub mod project_repo;
 pub mod repo;

@@ -21,13 +21,28 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { FileCode, Loader2 } from 'lucide-react';
 import { useScriptPlaceholders } from '@/hooks/useScriptPlaceholders';
 import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { MultiFileSearchTextarea } from '@/components/ui/multi-file-search-textarea';
 import { repoApi } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Repo, UpdateRepo } from 'shared/types';
+import type { Repo, RepoWithEffectiveConfig, UpdateRepo } from 'shared/types';
+
+/** Badge component to indicate a value comes from vibekanban.json config file */
+function ConfigFileBadge() {
+  const { t } = useTranslation('settings');
+  return (
+    <Badge
+      variant="secondary"
+      className="ml-2 text-xs font-normal gap-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+    >
+      <FileCode className="h-3 w-3" />
+      {t('settings.repos.configFile.badge')}
+    </Badge>
+  );
+}
 
 interface RepoScriptsFormState {
   display_name: string;
@@ -69,6 +84,13 @@ export function ReposSettings() {
   const [selectedRepoId, setSelectedRepoId] = useState<string>(repoIdParam);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
 
+  // Fetch effective config for selected repo (includes vibekanban.json overrides)
+  const { data: effectiveConfig } = useQuery({
+    queryKey: ['repo-effective-config', selectedRepoId],
+    queryFn: () => repoApi.getEffectiveConfig(selectedRepoId),
+    enabled: !!selectedRepoId,
+  });
+
   // Form state
   const [draft, setDraft] = useState<RepoScriptsFormState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -78,11 +100,39 @@ export function ReposSettings() {
   // Get OS-appropriate script placeholders
   const placeholders = useScriptPlaceholders();
 
-  // Check for unsaved changes
+  // Helper to check if a field is from config file
+  const isFromConfigFile = useCallback(
+    (
+      field:
+        | 'setup_script'
+        | 'cleanup_script'
+        | 'dev_server_script'
+        | 'copy_files'
+        | 'parallel_setup_script'
+    ): boolean => {
+      if (!effectiveConfig) return false;
+      return effectiveConfig[`${field}_from_file`] ?? false;
+    },
+    [effectiveConfig]
+  );
+
+  // Check for unsaved changes (compare against effective config if available)
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !selectedRepo) return false;
+    // Compare against effective config values if available
+    if (effectiveConfig && effectiveConfig.id === selectedRepo.id) {
+      const effectiveState: RepoScriptsFormState = {
+        display_name: effectiveConfig.display_name,
+        setup_script: effectiveConfig.setup_script ?? '',
+        parallel_setup_script: effectiveConfig.parallel_setup_script,
+        cleanup_script: effectiveConfig.cleanup_script ?? '',
+        copy_files: effectiveConfig.copy_files ?? '',
+        dev_server_script: effectiveConfig.dev_server_script ?? '',
+      };
+      return !isEqual(draft, effectiveState);
+    }
     return !isEqual(draft, repoToFormState(selectedRepo));
-  }, [draft, selectedRepo]);
+  }, [draft, selectedRepo, effectiveConfig]);
 
   // Handle repo selection from dropdown
   const handleRepoSelect = useCallback(
@@ -133,6 +183,21 @@ export function ReposSettings() {
     setSelectedRepoId(repoIdParam);
   }, [repoIdParam, hasUnsavedChanges, selectedRepoId, setSearchParams, t]);
 
+  // Helper to create form state from effective config
+  const effectiveConfigToFormState = useCallback(
+    (config: RepoWithEffectiveConfig): RepoScriptsFormState => {
+      return {
+        display_name: config.display_name,
+        setup_script: config.setup_script ?? '',
+        parallel_setup_script: config.parallel_setup_script,
+        cleanup_script: config.cleanup_script ?? '',
+        copy_files: config.copy_files ?? '',
+        dev_server_script: config.dev_server_script ?? '',
+      };
+    },
+    []
+  );
+
   // Populate draft from server data
   useEffect(() => {
     if (!repos) return;
@@ -152,8 +217,13 @@ export function ReposSettings() {
 
     if (hasUnsavedChanges) return;
 
-    setDraft(repoToFormState(nextRepo));
-  }, [repos, selectedRepoId, hasUnsavedChanges]);
+    // Use effective config values if available, otherwise fall back to repo values
+    if (effectiveConfig && effectiveConfig.id === nextRepo.id) {
+      setDraft(effectiveConfigToFormState(effectiveConfig));
+    } else {
+      setDraft(repoToFormState(nextRepo));
+    }
+  }, [repos, selectedRepoId, hasUnsavedChanges, effectiveConfig, effectiveConfigToFormState]);
 
   // Warn on tab close/navigation with unsaved changes
   useEffect(() => {
@@ -336,10 +406,23 @@ export function ReposSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Config file notice */}
+              {effectiveConfig?.has_config_file && (
+                <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
+                  <FileCode className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertDescription className="text-blue-800 dark:text-blue-200">
+                    {t('settings.repos.configFile.notice')}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="dev-server-script">
-                  {t('settings.repos.scripts.devServer.label')}
-                </Label>
+                <div className="flex items-center">
+                  <Label htmlFor="dev-server-script">
+                    {t('settings.repos.scripts.devServer.label')}
+                  </Label>
+                  {isFromConfigFile('dev_server_script') && <ConfigFileBadge />}
+                </div>
                 <AutoExpandingTextarea
                   id="dev-server-script"
                   value={draft.dev_server_script}
@@ -350,17 +433,27 @@ export function ReposSettings() {
                   }
                   placeholder={placeholders.dev}
                   maxRows={12}
-                  className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                  disabled={isFromConfigFile('dev_server_script')}
+                  className={`w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono ${
+                    isFromConfigFile('dev_server_script')
+                      ? 'opacity-75 cursor-not-allowed bg-muted'
+                      : ''
+                  }`}
                 />
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.repos.scripts.devServer.helper')}
+                  {isFromConfigFile('dev_server_script')
+                    ? t('settings.repos.configFile.fieldReadOnly')
+                    : t('settings.repos.scripts.devServer.helper')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="setup-script">
-                  {t('settings.repos.scripts.setup.label')}
-                </Label>
+                <div className="flex items-center">
+                  <Label htmlFor="setup-script">
+                    {t('settings.repos.scripts.setup.label')}
+                  </Label>
+                  {isFromConfigFile('setup_script') && <ConfigFileBadge />}
+                </div>
                 <AutoExpandingTextarea
                   id="setup-script"
                   value={draft.setup_script}
@@ -369,10 +462,17 @@ export function ReposSettings() {
                   }
                   placeholder={placeholders.setup}
                   maxRows={12}
-                  className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                  disabled={isFromConfigFile('setup_script')}
+                  className={`w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono ${
+                    isFromConfigFile('setup_script')
+                      ? 'opacity-75 cursor-not-allowed bg-muted'
+                      : ''
+                  }`}
                 />
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.repos.scripts.setup.helper')}
+                  {isFromConfigFile('setup_script')
+                    ? t('settings.repos.configFile.fieldReadOnly')
+                    : t('settings.repos.scripts.setup.helper')}
                 </p>
 
                 <div className="flex items-center space-x-2 pt-2">
@@ -384,7 +484,10 @@ export function ReposSettings() {
                         parallel_setup_script: checked === true,
                       })
                     }
-                    disabled={!draft.setup_script.trim()}
+                    disabled={
+                      !draft.setup_script.trim() ||
+                      isFromConfigFile('parallel_setup_script')
+                    }
                   />
                   <Label
                     htmlFor="parallel-setup-script"
@@ -392,16 +495,24 @@ export function ReposSettings() {
                   >
                     {t('settings.repos.scripts.setup.parallelLabel')}
                   </Label>
+                  {isFromConfigFile('parallel_setup_script') && (
+                    <ConfigFileBadge />
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground pl-6">
-                  {t('settings.repos.scripts.setup.parallelHelper')}
+                  {isFromConfigFile('parallel_setup_script')
+                    ? t('settings.repos.configFile.fieldReadOnly')
+                    : t('settings.repos.scripts.setup.parallelHelper')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cleanup-script">
-                  {t('settings.repos.scripts.cleanup.label')}
-                </Label>
+                <div className="flex items-center">
+                  <Label htmlFor="cleanup-script">
+                    {t('settings.repos.scripts.cleanup.label')}
+                  </Label>
+                  {isFromConfigFile('cleanup_script') && <ConfigFileBadge />}
+                </div>
                 <AutoExpandingTextarea
                   id="cleanup-script"
                   value={draft.cleanup_script}
@@ -412,29 +523,51 @@ export function ReposSettings() {
                   }
                   placeholder={placeholders.cleanup}
                   maxRows={12}
-                  className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                  disabled={isFromConfigFile('cleanup_script')}
+                  className={`w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono ${
+                    isFromConfigFile('cleanup_script')
+                      ? 'opacity-75 cursor-not-allowed bg-muted'
+                      : ''
+                  }`}
                 />
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.repos.scripts.cleanup.helper')}
+                  {isFromConfigFile('cleanup_script')
+                    ? t('settings.repos.configFile.fieldReadOnly')
+                    : t('settings.repos.scripts.cleanup.helper')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="copy-files">
-                  {t('settings.repos.scripts.copyFiles.label')}
-                </Label>
-                <MultiFileSearchTextarea
-                  value={draft.copy_files}
-                  onChange={(value) => updateDraft({ copy_files: value })}
-                  placeholder={t(
-                    'settings.repos.scripts.copyFiles.placeholder'
-                  )}
-                  maxRows={6}
-                  repoId={selectedRepo.id}
-                  className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-                />
+                <div className="flex items-center">
+                  <Label htmlFor="copy-files">
+                    {t('settings.repos.scripts.copyFiles.label')}
+                  </Label>
+                  {isFromConfigFile('copy_files') && <ConfigFileBadge />}
+                </div>
+                {isFromConfigFile('copy_files') ? (
+                  <div className="w-full px-3 py-2 border border-input bg-muted text-foreground rounded-md font-mono opacity-75">
+                    {draft.copy_files || (
+                      <span className="text-muted-foreground italic">
+                        {t('settings.repos.scripts.copyFiles.placeholder')}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <MultiFileSearchTextarea
+                    value={draft.copy_files}
+                    onChange={(value) => updateDraft({ copy_files: value })}
+                    placeholder={t(
+                      'settings.repos.scripts.copyFiles.placeholder'
+                    )}
+                    maxRows={6}
+                    repoId={selectedRepo.id}
+                    className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                  />
+                )}
                 <p className="text-sm text-muted-foreground">
-                  {t('settings.repos.scripts.copyFiles.helper')}
+                  {isFromConfigFile('copy_files')
+                    ? t('settings.repos.configFile.fieldReadOnly')
+                    : t('settings.repos.scripts.copyFiles.helper')}
                 </p>
               </div>
 

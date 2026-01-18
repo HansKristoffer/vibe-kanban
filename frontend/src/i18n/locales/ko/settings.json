@@ -407,6 +407,11 @@
         "unsavedChanges": "저장되지 않은 변경사항이 있습니다",
         "discard": "취소",
         "confirmSwitch": "저장되지 않은 변경사항이 있습니다. 정말 저장소를 전환하시겠습니까? 변경사항이 손실됩니다."
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "일부 설정은 이 저장소의 vibekanban.json 설정 파일에 정의되어 있습니다. 이 값들은 데이터베이스 설정을 덮어쓰며 여기서 편집할 수 없습니다.",
+        "fieldReadOnly": "이 값은 vibekanban.json에 정의되어 있어 여기서 편집할 수 없습니다."
       }
     }
   },

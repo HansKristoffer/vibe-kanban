@@ -407,6 +407,11 @@
         "unsavedChanges": "您有未儲存的變更",
         "discard": "放棄",
         "confirmSwitch": "您有未儲存的變更。確定要切換儲存庫嗎？您的變更將會遺失。"
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "部分設定在此儲存庫的 vibekanban.json 設定檔中定義。這些值會覆蓋資料庫設定，無法在此處編輯。",
+        "fieldReadOnly": "此值在 vibekanban.json 中定義，無法在此處編輯。"
       }
     }
   },

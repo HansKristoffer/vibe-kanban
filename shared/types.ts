@@ -30,6 +30,8 @@ export type ProjectIntegrations = { project_id: string, webhook_token: string, l
 
 export type UpsertProjectIntegrations = { webhook_token: string, linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, };
 
+export type ProjectEnvVar = { project_id: string, name: string, value: string, created_at: Date, updated_at: Date, };
+
 export type InboxSource = "linear" | "intercom" | "modjo" | "manual" | "posthog" | "sentry";
 
 export type InboxItemKind = "bug" | "feature" | "other";
@@ -50,7 +52,99 @@ export type InboxSourceCursor = { project_id: string, source: InboxSourceCursorT
 
 export type Repo = { id: string, path: string, name: string, display_name: string, setup_script: string | null, cleanup_script: string | null, copy_files: string | null, parallel_setup_script: boolean, dev_server_script: string | null, created_at: Date, updated_at: Date, };
 
+export type RepoWithEffectiveConfig = { 
+/**
+ * The base repository ID.
+ */
+id: string, 
+/**
+ * The path to the repository on disk.
+ */
+path: string, 
+/**
+ * The repository folder name.
+ */
+name: string, 
+/**
+ * The display name shown in the UI.
+ */
+display_name: string, 
+/**
+ * Whether a vibekanban.json config file exists in the repository.
+ */
+has_config_file: boolean, 
+/**
+ * Effective setup script (from config file if present, otherwise from database).
+ */
+setup_script: string | null, 
+/**
+ * Whether the setup_script value comes from the config file.
+ */
+setup_script_from_file: boolean, 
+/**
+ * Effective cleanup script.
+ */
+cleanup_script: string | null, 
+/**
+ * Whether the cleanup_script value comes from the config file.
+ */
+cleanup_script_from_file: boolean, 
+/**
+ * Effective dev server script.
+ */
+dev_server_script: string | null, 
+/**
+ * Whether the dev_server_script value comes from the config file.
+ */
+dev_server_script_from_file: boolean, 
+/**
+ * Effective copy files configuration.
+ */
+copy_files: string | null, 
+/**
+ * Whether the copy_files value comes from the config file.
+ */
+copy_files_from_file: boolean, 
+/**
+ * Effective parallel setup script flag.
+ */
+parallel_setup_script: boolean, 
+/**
+ * Whether the parallel_setup_script value comes from the config file.
+ */
+parallel_setup_script_from_file: boolean, 
+/**
+ * When the repository was created.
+ */
+created_at: Date, 
+/**
+ * When the repository was last updated.
+ */
+updated_at: Date, };
+
 export type UpdateRepo = { display_name?: string | null, setup_script?: string | null, cleanup_script?: string | null, copy_files?: string | null, parallel_setup_script?: boolean | null, dev_server_script?: string | null, };
+
+export type ScriptsConfig = { 
+/**
+ * Setup script to run before the coding agent starts.
+ */
+setup_script: string | null, 
+/**
+ * Cleanup script to run after coding agent execution.
+ */
+cleanup_script: string | null, 
+/**
+ * Dev server script for starting a development server.
+ */
+dev_server_script: string | null, 
+/**
+ * Comma-separated list of files to copy to the worktree.
+ */
+copy_files: string | null, 
+/**
+ * Whether to run the setup script in parallel with the coding agent.
+ */
+parallel_setup_script: boolean | null, };
 
 export type ProjectRepo = { id: string, project_id: string, repo_id: string, };
 
@@ -287,6 +381,32 @@ export type LinearWorkflowState = { id: string, name: string, type: string, };
 export type LinearStatesQuery = { team_id: string, };
 
 export type WebhookUrls = { linear: string, intercom: string, modjo: string, manual: string, posthog: string, sentry: string, };
+
+export type EnvVarEntry = { 
+/**
+ * The variable name.
+ */
+name: string, 
+/**
+ * Whether a value has been configured for this variable.
+ */
+configured: boolean, };
+
+export type ProjectEnvVarsResponse = { 
+/**
+ * List of environment variables from the project's vibekanban.json files.
+ */
+env_vars: Array<EnvVarEntry>, };
+
+export type UpdateProjectEnvVarsRequest = { 
+/**
+ * Values to set (key = env var name, value = the secret value).
+ */
+set: { [key in string]?: string } | null, 
+/**
+ * Names of variables to clear/delete.
+ */
+clear: Array<string> | null, };
 
 export type InboxQuery = { project_id: string, status: InboxItemStatus | null, };
 

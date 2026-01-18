@@ -120,6 +120,30 @@ Routes: `crates/server/src/routes/inbox.rs`
 - `GET /api/inbox/action/:token/accept` (one-click)
 - `GET /api/inbox/action/:token/decline` (one-click)
 
+### Manual item via REST API
+
+Use this endpoint to create a manual inbox item (source=`manual`) directly:
+
+- `POST /api/inbox`
+
+Example:
+
+```bash
+curl -X POST http://localhost:3000/api/inbox \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "YOUR_PROJECT_UUID",
+    "title": "Customer requested CSV export",
+    "body": "Add a CSV export to the reports page with filters and timezone support.",
+    "source_url": "https://your-system.example.com/items/123"
+  }'
+```
+
+Notes:
+
+- `project_id`, `title`, and `body` are required.
+- `source_url` is optional and used for context links.
+
 Accept flow:
 
 1. If source is not Linear and no `linear_issue_id`, create a Linear issue.

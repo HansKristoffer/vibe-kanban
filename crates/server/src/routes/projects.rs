@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 use crate::{
     DeploymentImpl, error::ApiError, middleware::load_project_middleware,
-    routes::project_integrations,
+    routes::{project_env_vars, project_integrations},
 };
 
 #[derive(Deserialize, TS)]
@@ -590,6 +590,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             get(get_project_repositories).post(add_project_repository),
         )
         .nest("/integrations", project_integrations::router(deployment))
+        .nest("/env-vars", project_env_vars::router(deployment))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_project_middleware,

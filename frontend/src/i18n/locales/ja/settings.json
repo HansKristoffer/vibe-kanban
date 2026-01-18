@@ -407,6 +407,11 @@
         "unsavedChanges": "未保存の変更があります",
         "discard": "破棄",
         "confirmSwitch": "未保存の変更があります。本当にリポジトリを切り替えますか？変更は失われます。"
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "一部の設定はこのリポジトリのvibekanban.json設定ファイルで定義されています。これらの値はデータベース設定を上書きし、ここでは編集できません。",
+        "fieldReadOnly": "この値はvibekanban.jsonで定義されており、ここでは編集できません。"
       }
     }
   },

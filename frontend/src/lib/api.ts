@@ -23,6 +23,7 @@ import {
   LinearTeam,
   LinearWorkflowState,
   Repo,
+  RepoWithEffectiveConfig,
   RepoWithTargetBranch,
   CreateProject,
   CreateProjectRepo,
@@ -409,6 +410,39 @@ export const projectIntegrationsApi = {
   },
 };
 
+// Project Environment Variables type definitions (inline since these are new)
+export interface EnvVarEntry {
+  name: string;
+  configured: boolean;
+}
+
+export interface ProjectEnvVarsResponse {
+  env_vars: EnvVarEntry[];
+}
+
+export interface UpdateProjectEnvVarsRequest {
+  set?: Record<string, string>;
+  clear?: string[];
+}
+
+export const projectEnvVarsApi = {
+  get: async (projectId: string): Promise<ProjectEnvVarsResponse> => {
+    const response = await makeRequest(`/api/projects/${projectId}/env-vars`);
+    return handleApiResponse<ProjectEnvVarsResponse>(response);
+  },
+
+  update: async (
+    projectId: string,
+    data: UpdateProjectEnvVarsRequest
+  ): Promise<ProjectEnvVarsResponse> => {
+    const response = await makeRequest(`/api/projects/${projectId}/env-vars`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectEnvVarsResponse>(response);
+  },
+};
+
 export const inboxApi = {
   list: async (
     projectId: string,
@@ -444,6 +478,17 @@ export const inboxApi = {
   decline: async (inboxId: string): Promise<InboxItem> => {
     const response = await makeRequest(`/api/inbox/${inboxId}/decline`, {
       method: 'POST',
+    });
+    return handleApiResponse<InboxItem>(response);
+  },
+
+  update: async (
+    inboxId: string,
+    payload: { title?: string; prd_markdown?: string }
+  ): Promise<InboxItem> => {
+    const response = await makeRequest(`/api/inbox/${inboxId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     });
     return handleApiResponse<InboxItem>(response);
   },
@@ -977,6 +1022,13 @@ export const repoApi = {
   getById: async (repoId: string): Promise<Repo> => {
     const response = await makeRequest(`/api/repos/${repoId}`);
     return handleApiResponse<Repo>(response);
+  },
+
+  getEffectiveConfig: async (
+    repoId: string
+  ): Promise<RepoWithEffectiveConfig> => {
+    const response = await makeRequest(`/api/repos/${repoId}/effective-config`);
+    return handleApiResponse<RepoWithEffectiveConfig>(response);
   },
 
   update: async (repoId: string, data: UpdateRepo): Promise<Repo> => {

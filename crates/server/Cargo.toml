@@ -52,6 +52,7 @@ hex = "0.4"
 subtle = "2.5"
 strum = "0.27.2"
 regex = "1"
+dotenv = "0.15"
 
 [build-dependencies]
 dotenv = "0.15"

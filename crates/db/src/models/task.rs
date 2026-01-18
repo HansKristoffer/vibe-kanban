@@ -236,6 +236,19 @@ ORDER BY t.created_at DESC"#,
         .await
     }
 
+    pub async fn find_by_project_id(pool: &SqlitePool, project_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+               FROM tasks
+               WHERE project_id = $1
+               ORDER BY updated_at DESC"#,
+            project_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_by_shared_task_id<'e, E>(
         executor: E,
         shared_task_id: Uuid,

@@ -38,6 +38,12 @@ pub struct AcceptInboxResponse {
     pub task_id: Uuid,
 }
 
+#[derive(Debug, Deserialize, TS)]
+pub struct UpdateInboxItemRequest {
+    pub title: Option<String>,
+    pub prd_markdown: Option<String>,
+}
+
 async fn classify_prd(input: &str) -> Option<(InboxItemKind, String, bool)> {
     let client = AnthropicClient::from_env().ok()?;
     let result = client.classify_and_generate_prd(input).await.ok()?;
@@ -106,6 +112,35 @@ pub async fn create_inbox_item(
     .await?;
 
     Ok(Json(ApiResponse::success(item)))
+}
+
+pub async fn update_inbox_item(
+    State(deployment): State<DeploymentImpl>,
+    Path(inbox_id): Path<Uuid>,
+    Json(payload): Json<UpdateInboxItemRequest>,
+) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let item = InboxItem::find_by_id(pool, inbox_id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
+
+    let updated = InboxItem::update(
+        pool,
+        item.id,
+        &UpdateInboxItem {
+            title: payload.title,
+            kind: None,
+            status: None,
+            prd_markdown: payload.prd_markdown,
+            task_id: None,
+            linear_issue_id: None,
+            linear_issue_url: None,
+            outbound_last_error: None,
+        },
+    )
+    .await?;
+
+    Ok(Json(ApiResponse::success(updated)))
 }
 
 pub async fn accept_inbox_item(
@@ -260,7 +295,7 @@ pub async fn decline_inbox_item_action(
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/", get(list_inbox_items).post(create_inbox_item))
-        .route("/{inbox_id}", get(get_inbox_item))
+        .route("/{inbox_id}", get(get_inbox_item).put(update_inbox_item))
         .route("/{inbox_id}/accept", post(accept_inbox_item))
         .route("/{inbox_id}/decline", post(decline_inbox_item))
         .route("/action/{action_token}/accept", get(accept_inbox_item_action))

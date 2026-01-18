@@ -7,11 +7,15 @@ use axum::{
 };
 use db::models::{
     project::SearchResult,
-    repo::{Repo, UpdateRepo},
+    repo::{Repo, RepoWithEffectiveConfig, UpdateRepo},
 };
 use deployment::Deployment;
 use serde::Deserialize;
-use services::services::{file_search::SearchQuery, git::GitBranch};
+use services::services::{
+    file_search::SearchQuery,
+    git::GitBranch,
+    repo_config::apply_config_to_repo,
+};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
@@ -112,6 +116,24 @@ pub async fn get_repo(
         .get_by_id(&deployment.db().pool, repo_id)
         .await?;
     Ok(ResponseJson(ApiResponse::success(repo)))
+}
+
+/// Get a repository with effective configuration.
+///
+/// This endpoint returns the repository with configuration values from the
+/// vibekanban.json config file (if present) applied. The response includes
+/// indicators showing which values come from the config file vs the database.
+pub async fn get_repo_effective_config(
+    State(deployment): State<DeploymentImpl>,
+    Path(repo_id): Path<Uuid>,
+) -> Result<ResponseJson<ApiResponse<RepoWithEffectiveConfig>>, ApiError> {
+    let repo = deployment
+        .repo()
+        .get_by_id(&deployment.db().pool, repo_id)
+        .await?;
+
+    let effective_config = apply_config_to_repo(repo);
+    Ok(ResponseJson(ApiResponse::success(effective_config)))
 }
 
 pub async fn update_repo(
@@ -215,4 +237,8 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/repos/{repo_id}/branches", get(get_repo_branches))
         .route("/repos/{repo_id}/search", get(search_repo))
         .route("/repos/{repo_id}/open-editor", post(open_repo_in_editor))
+        .route(
+            "/repos/{repo_id}/effective-config",
+            get(get_repo_effective_config),
+        )
 }

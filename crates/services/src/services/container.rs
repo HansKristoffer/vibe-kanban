@@ -53,6 +53,7 @@ use uuid::Uuid;
 use crate::services::{
     git::{GitService, GitServiceError},
     notification::NotificationService,
+    repo_config::get_effective_repo,
     share::SharePublisher,
     workspace_manager::WorkspaceError as WorkspaceManagerError,
     worktree_manager::WorktreeError,
@@ -379,7 +380,13 @@ pub trait ContainerService {
     }
 
     fn cleanup_actions_for_repos(&self, repos: &[Repo]) -> Option<ExecutorAction> {
-        let repos_with_cleanup: Vec<_> = repos
+        // Apply vibekanban.json config file overrides to each repo
+        let effective_repos: Vec<_> = repos
+            .iter()
+            .map(|r| get_effective_repo(r.clone()))
+            .collect();
+
+        let repos_with_cleanup: Vec<_> = effective_repos
             .iter()
             .filter(|r| r.cleanup_script.is_some())
             .collect();
@@ -416,7 +423,16 @@ pub trait ContainerService {
     }
 
     fn setup_actions_for_repos(&self, repos: &[Repo]) -> Option<ExecutorAction> {
-        let repos_with_setup: Vec<_> = repos.iter().filter(|r| r.setup_script.is_some()).collect();
+        // Apply vibekanban.json config file overrides to each repo
+        let effective_repos: Vec<_> = repos
+            .iter()
+            .map(|r| get_effective_repo(r.clone()))
+            .collect();
+
+        let repos_with_setup: Vec<_> = effective_repos
+            .iter()
+            .filter(|r| r.setup_script.is_some())
+            .collect();
 
         if repos_with_setup.is_empty() {
             return None;
@@ -450,13 +466,15 @@ pub trait ContainerService {
     }
 
     fn setup_action_for_repo(repo: &Repo) -> Option<ExecutorAction> {
-        repo.setup_script.as_ref().map(|script| {
+        // Apply vibekanban.json config file overrides
+        let effective_repo = get_effective_repo(repo.clone());
+        effective_repo.setup_script.as_ref().map(|script| {
             ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
                     script: script.clone(),
                     language: ScriptRequestLanguage::Bash,
                     context: ScriptContext::SetupScript,
-                    working_dir: Some(repo.name.clone()),
+                    working_dir: Some(effective_repo.name.clone()),
                 }),
                 None,
             )
@@ -469,13 +487,15 @@ pub trait ContainerService {
     ) -> ExecutorAction {
         let mut chained = next_action;
         for repo in repos.iter().rev() {
-            if let Some(script) = &repo.setup_script {
+            // Apply vibekanban.json config file overrides
+            let effective_repo = get_effective_repo((*repo).clone());
+            if let Some(script) = &effective_repo.setup_script {
                 chained = ExecutorAction::new(
                     ExecutorActionType::ScriptRequest(ScriptRequest {
                         script: script.clone(),
                         language: ScriptRequestLanguage::Bash,
                         context: ScriptContext::SetupScript,
-                        working_dir: Some(repo.name.clone()),
+                        working_dir: Some(effective_repo.name.clone()),
                     }),
                     Some(Box::new(chained)),
                 );

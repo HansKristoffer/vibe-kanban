@@ -55,6 +55,7 @@ use services::services::{
     file_search::SearchQuery,
     git::{ConflictOp, GitCliError, GitServiceError},
     inbox_outbound::post_started_if_needed,
+    repo_config::get_effective_repo,
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
@@ -1291,7 +1292,9 @@ pub async fn start_dev_server(
     }
 
     let repos = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
-    let repos_with_dev_script: Vec<_> = repos
+    // Apply vibekanban.json config file overrides to get effective dev_server_script
+    let effective_repos: Vec<_> = repos.into_iter().map(get_effective_repo).collect();
+    let repos_with_dev_script: Vec<_> = effective_repos
         .iter()
         .filter(|r| r.dev_server_script.as_ref().is_some_and(|s| !s.is_empty()))
         .collect();
@@ -1617,7 +1620,16 @@ pub async fn get_task_attempt_repos(
     let repos =
         WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace.id).await?;
 
-    Ok(ResponseJson(ApiResponse::success(repos)))
+    // Apply vibekanban.json config file overrides so the UI can see effective dev_server_script
+    let repos_with_effective_config: Vec<RepoWithTargetBranch> = repos
+        .into_iter()
+        .map(|r| RepoWithTargetBranch {
+            repo: get_effective_repo(r.repo),
+            target_branch: r.target_branch,
+        })
+        .collect();
+
+    Ok(ResponseJson(ApiResponse::success(repos_with_effective_config)))
 }
 
 pub async fn search_workspace_files(

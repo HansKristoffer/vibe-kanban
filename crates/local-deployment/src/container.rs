@@ -19,6 +19,7 @@ use db::{
         },
         execution_process_logs::ExecutionProcessLogs,
         execution_process_repo_state::ExecutionProcessRepoState,
+        project_env_var::ProjectEnvVar,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         task::{Task, TaskStatus},
@@ -52,6 +53,7 @@ use services::services::{
     image::ImageService,
     notification::NotificationService,
     queued_message::QueuedMessageService,
+    repo_config::collect_env_vars_for_repos,
     share::SharePublisher,
     workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
 };
@@ -1462,6 +1464,25 @@ impl ContainerService for LocalContainerService {
         env.insert("VK_TASK_ID", task.id.to_string());
         env.insert("VK_WORKSPACE_ID", workspace.id.to_string());
         env.insert("VK_WORKSPACE_BRANCH", &workspace.branch);
+
+        // For DevServer executions, inject project env vars from vibekanban.json allowlist
+        if matches!(
+            execution_process.run_reason,
+            ExecutionProcessRunReason::DevServer
+        ) {
+            // Get allowed env var names from vibekanban.json files
+            let allowed_names = collect_env_vars_for_repos(&repos);
+
+            // Get configured values from the database
+            let env_values =
+                ProjectEnvVar::get_values_for_names(&self.db.pool, project.id, &allowed_names)
+                    .await?;
+
+            // Inject into execution environment
+            for (name, value) in env_values {
+                env.insert(&name, &value);
+            }
+        }
 
         // Create the child and stream, add to execution tracker with timeout
         let mut spawned = tokio::time::timeout(

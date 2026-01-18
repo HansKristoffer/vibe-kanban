@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM project_env_vars WHERE project_id = $1 AND name = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c569853cf2d113a54fa4dc9f0e50171c1f51c28c4534ef1cb120870478ed1a27"
+}

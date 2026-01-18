@@ -407,6 +407,11 @@
         "unsavedChanges": "You have unsaved changes",
         "discard": "Discard",
         "confirmSwitch": "You have unsaved changes. Are you sure you want to switch repositories? Your changes will be lost."
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "Some settings are defined in the vibekanban.json config file in this repository. These values override database settings and cannot be edited here.",
+        "fieldReadOnly": "This value is defined in vibekanban.json and cannot be edited here."
       }
     }
   },

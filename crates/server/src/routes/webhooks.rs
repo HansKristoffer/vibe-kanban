@@ -144,6 +144,10 @@ pub async fn linear_webhook(
         &["/data/issue/title", "/data/title", "/issue/title", "/title"],
     )
     .unwrap_or_else(|| "Linear issue".to_string());
+    let description = extract_text(
+        &payload,
+        &["/data/issue/description", "/data/description", "/issue/description", "/description"],
+    );
     let source_url = extract_string(
         &payload,
         &["/data/issue/url", "/data/url", "/issue/url", "/url"],
@@ -170,13 +174,18 @@ pub async fn linear_webhook(
         }
     }
 
-    let classification = classify_payload(&format!("Title: {}\n\nPayload:\n{}", title, enrichment_text)).await;
+    let classification_input = if let Some(ref desc) = description {
+        format!("Title: {}\n\nDescription:\n{}\n\nPayload:\n{}", title, desc, enrichment_text)
+    } else {
+        format!("Title: {}\n\nPayload:\n{}", title, enrichment_text)
+    };
+    let classification = classify_payload(&classification_input).await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
         Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Other, InboxItemStatus::Pending, None),
+        None => (InboxItemKind::Feature, InboxItemStatus::Pending, description),
     };
 
     let item = upsert_inbox_item(
@@ -579,10 +588,10 @@ pub async fn sentry_webhook(
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/linear/:webhook_token", post(linear_webhook))
-        .route("/intercom/:webhook_token", post(intercom_webhook))
-        .route("/modjo/:webhook_token", post(modjo_webhook))
-        .route("/manual/:webhook_token", post(manual_webhook))
-        .route("/posthog/:webhook_token", post(posthog_webhook))
-        .route("/sentry/:webhook_token", post(sentry_webhook))
+        .route("/linear/{webhook_token}", post(linear_webhook))
+        .route("/intercom/{webhook_token}", post(intercom_webhook))
+        .route("/modjo/{webhook_token}", post(modjo_webhook))
+        .route("/manual/{webhook_token}", post(manual_webhook))
+        .route("/posthog/{webhook_token}", post(posthog_webhook))
+        .route("/sentry/{webhook_token}", post(sentry_webhook))
 }

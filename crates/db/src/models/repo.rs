@@ -33,6 +33,77 @@ pub struct Repo {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Represents a repository with effective configuration values.
+///
+/// This combines database-stored values with values from a vibekanban.json
+/// config file (if present). When a config file exists and defines a value,
+/// that value takes precedence over the database value.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RepoWithEffectiveConfig {
+    /// The base repository ID.
+    pub id: Uuid,
+    /// The path to the repository on disk.
+    pub path: PathBuf,
+    /// The repository folder name.
+    pub name: String,
+    /// The display name shown in the UI.
+    pub display_name: String,
+    /// Whether a vibekanban.json config file exists in the repository.
+    pub has_config_file: bool,
+    /// Effective setup script (from config file if present, otherwise from database).
+    pub setup_script: Option<String>,
+    /// Whether the setup_script value comes from the config file.
+    pub setup_script_from_file: bool,
+    /// Effective cleanup script.
+    pub cleanup_script: Option<String>,
+    /// Whether the cleanup_script value comes from the config file.
+    pub cleanup_script_from_file: bool,
+    /// Effective dev server script.
+    pub dev_server_script: Option<String>,
+    /// Whether the dev_server_script value comes from the config file.
+    pub dev_server_script_from_file: bool,
+    /// Effective copy files configuration.
+    pub copy_files: Option<String>,
+    /// Whether the copy_files value comes from the config file.
+    pub copy_files_from_file: bool,
+    /// Effective parallel setup script flag.
+    pub parallel_setup_script: bool,
+    /// Whether the parallel_setup_script value comes from the config file.
+    pub parallel_setup_script_from_file: bool,
+    /// When the repository was created.
+    #[ts(type = "Date")]
+    pub created_at: DateTime<Utc>,
+    /// When the repository was last updated.
+    #[ts(type = "Date")]
+    pub updated_at: DateTime<Utc>,
+}
+
+impl RepoWithEffectiveConfig {
+    /// Creates a RepoWithEffectiveConfig from a Repo without any config file overrides.
+    pub fn from_repo_without_config(repo: Repo) -> Self {
+        Self {
+            id: repo.id,
+            path: repo.path,
+            name: repo.name,
+            display_name: repo.display_name,
+            has_config_file: false,
+            setup_script: repo.setup_script,
+            setup_script_from_file: false,
+            cleanup_script: repo.cleanup_script,
+            cleanup_script_from_file: false,
+            dev_server_script: repo.dev_server_script,
+            dev_server_script_from_file: false,
+            copy_files: repo.copy_files,
+            copy_files_from_file: false,
+            parallel_setup_script: repo.parallel_setup_script,
+            parallel_setup_script_from_file: false,
+            created_at: repo.created_at,
+            updated_at: repo.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateRepo {

@@ -407,6 +407,11 @@
         "unsavedChanges": "Tienes cambios sin guardar",
         "discard": "Descartar",
         "confirmSwitch": "Tienes cambios sin guardar. ¿Estás seguro de que quieres cambiar de repositorio? Tus cambios se perderán."
+      },
+      "configFile": {
+        "badge": "vibekanban.json",
+        "notice": "Algunas configuraciones están definidas en el archivo de configuración vibekanban.json en este repositorio. Estos valores anulan la configuración de la base de datos y no se pueden editar aquí.",
+        "fieldReadOnly": "Este valor está definido en vibekanban.json y no se puede editar aquí."
       }
     }
   },
