@@ -26,6 +26,8 @@ pub struct WebhookUrls {
     pub manual: String,
     pub posthog: String,
     pub sentry: String,
+    pub slack_commands: String,
+    pub slack_interactivity: String,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -53,6 +55,9 @@ pub struct ProjectIntegrationsResponse {
     pub sentry_api_token: Option<String>,
     pub sentry_org_slug: Option<String>,
     pub sentry_project_slug: Option<String>,
+    pub slack_bot_token: Option<String>,
+    pub slack_signing_secret: Option<String>,
+    pub slack_channel_id: Option<String>,
     pub linear_api_key_configured: bool,
     pub linear_webhook_secret_configured: bool,
     pub intercom_access_token_configured: bool,
@@ -63,6 +68,8 @@ pub struct ProjectIntegrationsResponse {
     pub sentry_webhook_secret_configured: bool,
     pub posthog_api_key_configured: bool,
     pub sentry_api_token_configured: bool,
+    pub slack_bot_token_configured: bool,
+    pub slack_signing_secret_configured: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -102,6 +109,9 @@ pub struct UpdateProjectIntegrationsRequest {
     pub sentry_api_token: Option<String>,
     pub sentry_org_slug: Option<String>,
     pub sentry_project_slug: Option<String>,
+    pub slack_bot_token: Option<String>,
+    pub slack_signing_secret: Option<String>,
+    pub slack_channel_id: Option<String>,
     pub clear_linear_api_key: Option<bool>,
     pub clear_linear_webhook_secret: Option<bool>,
     pub clear_intercom_access_token: Option<bool>,
@@ -112,6 +122,8 @@ pub struct UpdateProjectIntegrationsRequest {
     pub clear_sentry_webhook_secret: Option<bool>,
     pub clear_posthog_api_key: Option<bool>,
     pub clear_sentry_api_token: Option<bool>,
+    pub clear_slack_bot_token: Option<bool>,
+    pub clear_slack_signing_secret: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -225,6 +237,8 @@ fn build_webhook_urls(token: &str) -> Option<WebhookUrls> {
         manual: format!("{}/api/webhooks/manual/{}", base, token),
         posthog: format!("{}/api/webhooks/posthog/{}", base, token),
         sentry: format!("{}/api/webhooks/sentry/{}", base, token),
+        slack_commands: format!("{}/api/webhooks/slack/commands", base),
+        slack_interactivity: format!("{}/api/webhooks/slack/interactivity", base),
     })
 }
 
@@ -253,6 +267,9 @@ fn to_response(record: ProjectIntegrations) -> ProjectIntegrationsResponse {
         sentry_api_token: mask_secret(&record.sentry_api_token),
         sentry_org_slug: record.sentry_org_slug,
         sentry_project_slug: record.sentry_project_slug,
+        slack_bot_token: mask_secret(&record.slack_bot_token),
+        slack_signing_secret: mask_secret(&record.slack_signing_secret),
+        slack_channel_id: record.slack_channel_id,
         linear_api_key_configured: record.linear_api_key.is_some(),
         linear_webhook_secret_configured: record.linear_webhook_secret.is_some(),
         intercom_access_token_configured: record.intercom_access_token.is_some(),
@@ -263,6 +280,8 @@ fn to_response(record: ProjectIntegrations) -> ProjectIntegrationsResponse {
         sentry_webhook_secret_configured: record.sentry_webhook_secret.is_some(),
         posthog_api_key_configured: record.posthog_api_key.is_some(),
         sentry_api_token_configured: record.sentry_api_token.is_some(),
+        slack_bot_token_configured: record.slack_bot_token.is_some(),
+        slack_signing_secret_configured: record.slack_signing_secret.is_some(),
     }
 }
 
@@ -302,6 +321,9 @@ pub async fn get_project_integrations(
                     sentry_api_token: None,
                     sentry_org_slug: None,
                     sentry_project_slug: None,
+                    slack_bot_token: None,
+                    slack_signing_secret: None,
+                    slack_channel_id: None,
                 },
             )
             .await?
@@ -343,6 +365,9 @@ pub async fn update_project_integrations(
             sentry_api_token: None,
             sentry_org_slug: None,
             sentry_project_slug: None,
+            slack_bot_token: None,
+            slack_signing_secret: None,
+            slack_channel_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         });
@@ -421,6 +446,17 @@ pub async fn update_project_integrations(
             sentry_org_slug: trim_to_option(payload.sentry_org_slug).or(existing.sentry_org_slug),
             sentry_project_slug: trim_to_option(payload.sentry_project_slug)
                 .or(existing.sentry_project_slug),
+            slack_bot_token: merge_secret(
+                existing.slack_bot_token,
+                payload.slack_bot_token,
+                payload.clear_slack_bot_token.unwrap_or(false),
+            ),
+            slack_signing_secret: merge_secret(
+                existing.slack_signing_secret,
+                payload.slack_signing_secret,
+                payload.clear_slack_signing_secret.unwrap_or(false),
+            ),
+            slack_channel_id: trim_to_option(payload.slack_channel_id).or(existing.slack_channel_id),
         },
     )
     .await?;

@@ -285,13 +285,64 @@ impl Approvals {
 pub(crate) async fn ensure_task_in_review(pool: &SqlitePool, execution_process_id: Uuid) {
     if let Ok(ctx) = ExecutionProcess::load_context(pool, execution_process_id).await
         && ctx.task.status == TaskStatus::InProgress
-        && let Err(e) = Task::update_status(pool, ctx.task.id, TaskStatus::InReview).await
     {
-        tracing::warn!(
-            "Failed to update task status to InReview for approval request: {}",
-            e
-        );
+        match Task::update_status(pool, ctx.task.id, TaskStatus::InReview).await {
+            Ok(_) => {
+                // Send Slack notification for task needing review
+                notify_task_in_review_to_slack(pool, &ctx.task).await;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to update task status to InReview for approval request: {}",
+                    e
+                );
+            }
+        }
     }
+}
+
+/// Send Slack notification when a task moves to In Review (for approvals)
+async fn notify_task_in_review_to_slack(pool: &SqlitePool, task: &Task) {
+    use db::models::inbox_item::InboxItem;
+    use db::models::project_integrations::ProjectIntegrations;
+
+    // Look up the inbox item for this task
+    let inbox_item = match InboxItem::find_by_task_id(pool, task.id).await {
+        Ok(Some(item)) => item,
+        Ok(None) => {
+            tracing::debug!("No inbox item found for task {}, skipping Slack notification", task.id);
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("Failed to look up inbox item for task {}: {}", task.id, e);
+            return;
+        }
+    };
+
+    // Check if Slack is configured
+    let integrations = match ProjectIntegrations::find_by_project_id(pool, task.project_id).await {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+
+    let (bot_token, channel_id) = match (integrations.slack_bot_token.as_ref(), inbox_item.slack_channel_id.as_ref()) {
+        (Some(t), Some(c)) => (t, c),
+        _ => return,
+    };
+
+    // Build URLs
+    let vk_task_url = super::slack::get_vk_task_url(&task.project_id, &task.id);
+
+    // Send the notification
+    super::slack::notify_task_in_review(
+        bot_token,
+        channel_id,
+        inbox_item.slack_message_ts.as_deref(),
+        &inbox_item.title,
+        Some(&vk_task_url),
+        inbox_item.linear_issue_url.as_deref(),
+        inbox_item.slack_accepted_by_user_id.as_deref(),
+    ).await;
 }
 
 /// Find a matching tool use entry that hasn't been assigned to an approval yet

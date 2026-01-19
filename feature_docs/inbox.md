@@ -146,8 +146,8 @@ Notes:
 
 Accept flow:
 
-1. If source is not Linear and no `linear_issue_id`, create a Linear issue.
-2. Create Vibe task with status `todo`.
+1. Create Vibe task with status `todo`.
+2. If source is not Linear and no `linear_issue_id`, create a Linear issue with a link to the VK task.
 3. Link task + Linear issue on the inbox item.
 
 Decline flow:

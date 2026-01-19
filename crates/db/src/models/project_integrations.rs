@@ -29,6 +29,9 @@ pub struct ProjectIntegrations {
     pub sentry_api_token: Option<String>,
     pub sentry_org_slug: Option<String>,
     pub sentry_project_slug: Option<String>,
+    pub slack_bot_token: Option<String>,
+    pub slack_signing_secret: Option<String>,
+    pub slack_channel_id: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -59,6 +62,9 @@ pub struct UpsertProjectIntegrations {
     pub sentry_api_token: Option<String>,
     pub sentry_org_slug: Option<String>,
     pub sentry_project_slug: Option<String>,
+    pub slack_bot_token: Option<String>,
+    pub slack_signing_secret: Option<String>,
+    pub slack_channel_id: Option<String>,
 }
 
 impl ProjectIntegrations {
@@ -91,6 +97,9 @@ impl ProjectIntegrations {
                       sentry_api_token,
                       sentry_org_slug,
                       sentry_project_slug,
+                      slack_bot_token,
+                      slack_signing_secret,
+                      slack_channel_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM project_integrations
@@ -127,6 +136,9 @@ impl ProjectIntegrations {
                       sentry_api_token,
                       sentry_org_slug,
                       sentry_project_slug,
+                      slack_bot_token,
+                      slack_signing_secret,
+                      slack_channel_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM project_integrations"#
@@ -165,10 +177,13 @@ impl ProjectIntegrations {
                     posthog_project_id,
                     sentry_api_token,
                     sentry_org_slug,
-                    sentry_project_slug
+                    sentry_project_slug,
+                    slack_bot_token,
+                    slack_signing_secret,
+                    slack_channel_id
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                    $18, $19, $20, $21, $22, $23
+                    $18, $19, $20, $21, $22, $23, $24, $25, $26
                 )
                 ON CONFLICT(project_id) DO UPDATE SET
                     webhook_token = excluded.webhook_token,
@@ -193,6 +208,9 @@ impl ProjectIntegrations {
                     sentry_api_token = excluded.sentry_api_token,
                     sentry_org_slug = excluded.sentry_org_slug,
                     sentry_project_slug = excluded.sentry_project_slug,
+                    slack_bot_token = excluded.slack_bot_token,
+                    slack_signing_secret = excluded.slack_signing_secret,
+                    slack_channel_id = excluded.slack_channel_id,
                     updated_at = datetime('now', 'subsec')
                 RETURNING project_id as "project_id!: Uuid",
                           webhook_token,
@@ -217,6 +235,9 @@ impl ProjectIntegrations {
                           sentry_api_token,
                           sentry_org_slug,
                           sentry_project_slug,
+                          slack_bot_token,
+                          slack_signing_secret,
+                          slack_channel_id,
                           created_at as "created_at!: DateTime<Utc>",
                           updated_at as "updated_at!: DateTime<Utc>""#,
             project_id,
@@ -241,7 +262,10 @@ impl ProjectIntegrations {
             data.posthog_project_id,
             data.sentry_api_token,
             data.sentry_org_slug,
-            data.sentry_project_slug
+            data.sentry_project_slug,
+            data.slack_bot_token,
+            data.slack_signing_secret,
+            data.slack_channel_id
         )
         .fetch_one(pool)
         .await
@@ -276,6 +300,9 @@ impl ProjectIntegrations {
                       sentry_api_token,
                       sentry_org_slug,
                       sentry_project_slug,
+                      slack_bot_token,
+                      slack_signing_secret,
+                      slack_channel_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM project_integrations

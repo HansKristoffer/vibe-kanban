@@ -14,6 +14,7 @@ pub enum InboxSource {
     Manual,
     Posthog,
     Sentry,
+    Slack,
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize, TS)]
@@ -51,6 +52,9 @@ pub struct InboxItem {
     pub linear_issue_id: Option<String>,
     pub linear_issue_url: Option<String>,
     pub action_token: String,
+    pub slack_channel_id: Option<String>,
+    pub slack_message_ts: Option<String>,
+    pub slack_accepted_by_user_id: Option<String>,
     #[ts(type = "Date")]
     pub outbound_registered_at: Option<DateTime<Utc>>,
     #[ts(type = "Date")]
@@ -131,6 +135,9 @@ impl InboxItem {
                       linear_issue_id,
                       linear_issue_url,
                       action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -166,6 +173,9 @@ impl InboxItem {
                       linear_issue_id,
                       linear_issue_url,
                       action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -201,6 +211,9 @@ impl InboxItem {
                       linear_issue_id,
                       linear_issue_url,
                       action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -217,6 +230,7 @@ impl InboxItem {
         .await
     }
 
+    /// List inbox items for the Inbox UI - excludes Slack-managed items
     pub async fn list_by_project_and_status(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -238,6 +252,9 @@ impl InboxItem {
                       linear_issue_id,
                       linear_issue_url,
                       action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -248,6 +265,7 @@ impl InboxItem {
                FROM inbox_items
                WHERE project_id = $1
                  AND status = $2
+                 AND slack_message_ts IS NULL
                ORDER BY created_at DESC"#,
             project_id,
             status
@@ -256,6 +274,7 @@ impl InboxItem {
         .await
     }
 
+    /// List all inbox items for the Inbox UI - excludes Slack-managed items
     pub async fn list_by_project(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -276,6 +295,9 @@ impl InboxItem {
                       linear_issue_id,
                       linear_issue_url,
                       action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -285,6 +307,7 @@ impl InboxItem {
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM inbox_items
                WHERE project_id = $1
+                 AND slack_message_ts IS NULL
                ORDER BY created_at DESC"#,
             project_id
         )
@@ -330,6 +353,9 @@ impl InboxItem {
                           linear_issue_id,
                           linear_issue_url,
                           action_token,
+                          slack_channel_id,
+                          slack_message_ts,
+                          slack_accepted_by_user_id,
                           outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                           outbound_started_at as "outbound_started_at: DateTime<Utc>",
                           outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -403,6 +429,9 @@ impl InboxItem {
                           linear_issue_id,
                           linear_issue_url,
                           action_token,
+                          slack_channel_id,
+                          slack_message_ts,
+                          slack_accepted_by_user_id,
                           outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                           outbound_started_at as "outbound_started_at: DateTime<Utc>",
                           outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -476,6 +505,9 @@ impl InboxItem {
                          linear_issue_id,
                          linear_issue_url,
                          action_token,
+                         slack_channel_id,
+                         slack_message_ts,
+                         slack_accepted_by_user_id,
                          outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                          outbound_started_at as "outbound_started_at: DateTime<Utc>",
                          outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -577,6 +609,89 @@ impl InboxItem {
         .execute(pool)
         .await?;
         Ok(())
+    }
+
+    /// Set the Slack message info on an inbox item after posting to Slack
+    pub async fn set_slack_message(
+        pool: &SqlitePool,
+        id: Uuid,
+        channel_id: &str,
+        message_ts: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE inbox_items
+               SET slack_channel_id = $2,
+                   slack_message_ts = $3,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $1"#,
+            id,
+            channel_id,
+            message_ts
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set the Slack user who accepted the PRD
+    pub async fn set_slack_accepted_by(
+        pool: &SqlitePool,
+        id: Uuid,
+        user_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE inbox_items
+               SET slack_accepted_by_user_id = $2,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $1"#,
+            id,
+            user_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Find an inbox item by Slack message timestamp
+    pub async fn find_by_slack_message_ts(
+        pool: &SqlitePool,
+        channel_id: &str,
+        message_ts: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            InboxItem,
+            r#"SELECT id as "id!: Uuid",
+                      project_id as "project_id!: Uuid",
+                      source as "source!: InboxSource",
+                      source_item_id,
+                      source_url,
+                      title,
+                      raw_payload_json,
+                      kind as "kind!: InboxItemKind",
+                      status as "status!: InboxItemStatus",
+                      prd_markdown,
+                      task_id as "task_id: Uuid",
+                      linear_issue_id,
+                      linear_issue_url,
+                      action_token,
+                      slack_channel_id,
+                      slack_message_ts,
+                      slack_accepted_by_user_id,
+                      outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
+                      outbound_started_at as "outbound_started_at: DateTime<Utc>",
+                      outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
+                      outbound_pr_merged_at as "outbound_pr_merged_at: DateTime<Utc>",
+                      outbound_last_error,
+                      created_at as "created_at!: DateTime<Utc>",
+                      updated_at as "updated_at!: DateTime<Utc>"
+               FROM inbox_items
+               WHERE slack_channel_id = $1 AND slack_message_ts = $2
+               LIMIT 1"#,
+            channel_id,
+            message_ts
+        )
+        .fetch_optional(pool)
+        .await
     }
 }
 

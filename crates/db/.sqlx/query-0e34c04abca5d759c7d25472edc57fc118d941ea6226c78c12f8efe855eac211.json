@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT project_id as \"project_id!: Uuid\",\n                      webhook_token,\n                      linear_api_key,\n                      linear_team_id,\n                      linear_state_id_todo,\n                      linear_state_id_inprogress,\n                      linear_state_id_inreview,\n                      linear_state_id_done,\n                      linear_state_id_cancelled,\n                      linear_webhook_secret,\n                      intercom_access_token,\n                      intercom_webhook_secret,\n                      intercom_admin_id,\n                      modjo_api_key,\n                      modjo_webhook_secret,\n                      posthog_webhook_secret,\n                      sentry_webhook_secret,\n                      posthog_api_key,\n                      posthog_host,\n                      posthog_project_id,\n                      sentry_api_token,\n                      sentry_org_slug,\n                      sentry_project_slug,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM project_integrations",
+  "query": "SELECT project_id as \"project_id!: Uuid\",\n                      webhook_token,\n                      linear_api_key,\n                      linear_team_id,\n                      linear_state_id_todo,\n                      linear_state_id_inprogress,\n                      linear_state_id_inreview,\n                      linear_state_id_done,\n                      linear_state_id_cancelled,\n                      linear_webhook_secret,\n                      intercom_access_token,\n                      intercom_webhook_secret,\n                      intercom_admin_id,\n                      modjo_api_key,\n                      modjo_webhook_secret,\n                      posthog_webhook_secret,\n                      sentry_webhook_secret,\n                      posthog_api_key,\n                      posthog_host,\n                      posthog_project_id,\n                      sentry_api_token,\n                      sentry_org_slug,\n                      sentry_project_slug,\n                      slack_bot_token,\n                      slack_signing_secret,\n                      slack_channel_id,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM project_integrations\n               WHERE webhook_token = $1",
   "describe": {
     "columns": [
       {
@@ -119,18 +119,33 @@
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
+        "name": "slack_bot_token",
         "ordinal": 23,
         "type_info": "Text"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
+        "name": "slack_signing_secret",
         "ordinal": 24,
+        "type_info": "Text"
+      },
+      {
+        "name": "slack_channel_id",
+        "ordinal": 25,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 26,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 27,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       true,
@@ -156,9 +171,12 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "be56d18c169b74f2cf8fd107db5e66cdc9c2cc55b2aa9e731518f6fe1445f1b9"
+  "hash": "0e34c04abca5d759c7d25472edc57fc118d941ea6226c78c12f8efe855eac211"
 }

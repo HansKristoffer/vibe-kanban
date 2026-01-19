@@ -92,7 +92,8 @@ export default defineConfig({
     allowedHosts: [
       ".trycloudflare.com", // allow all cloudflared tunnels
       ".ngrok.app", // allow all ngrok tunnels
-      ".ngrok-free.app", // allow ngrok free tier tunnels
+      ".ngrok-free.app", // allow ngrok free tier tunnels,
+      ".eu.ngrok.io", // allow ei.ngrok.io tunnels
     ],
   },
   optimizeDeps: {

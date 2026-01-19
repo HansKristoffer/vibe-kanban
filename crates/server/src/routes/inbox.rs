@@ -159,6 +159,19 @@ pub async fn accept_inbox_item(
         return Ok(Json(ApiResponse::success(AcceptInboxResponse { task_id })));
     }
 
+    // 1. Create task first (so we have task_id for Linear issue)
+    let task = Task::create(
+        pool,
+        &CreateTask::from_title_description(
+            item.project_id,
+            item.title.clone(),
+            item.prd_markdown.clone(),
+        ),
+        Uuid::new_v4(),
+    )
+    .await?;
+
+    // 2. Create Linear issue if Linear is configured and source is not Linear
     let mut linear_issue_id = item.linear_issue_id.clone();
     let mut linear_issue_url = item.linear_issue_url.clone();
 
@@ -176,6 +189,14 @@ pub async fn accept_inbox_item(
             .ok_or_else(|| ApiError::BadRequest("Linear team not configured".to_string()))?;
 
         let mut description = item.prd_markdown.clone().unwrap_or_default();
+
+        // Add VK task link at the top of description
+        let vk_task_url = services::services::slack::get_vk_task_url(&item.project_id, &task.id);
+        if !vk_task_url.is_empty() {
+            let vk_link = format!("**[View in Vibe Kanban]({})**\n\n", vk_task_url);
+            description = format!("{}{}", vk_link, description);
+        }
+
         if let Some(source_url) = item.source_url.as_ref() {
             if !description.trim().is_empty() {
                 description.push_str("\n\n");
@@ -199,17 +220,6 @@ pub async fn accept_inbox_item(
         linear_issue_id = Some(issue.id);
         linear_issue_url = issue.url;
     }
-
-    let task = Task::create(
-        pool,
-        &CreateTask::from_title_description(
-            item.project_id,
-            item.title.clone(),
-            item.prd_markdown.clone(),
-        ),
-        Uuid::new_v4(),
-    )
-    .await?;
 
     InboxItem::update(
         pool,

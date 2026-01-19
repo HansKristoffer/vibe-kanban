@@ -15,6 +15,7 @@ use axum::{
 use db::models::{
     image::TaskImage,
     inbox_item::InboxItem,
+    merge::Merge,
     project_integrations::ProjectIntegrations,
     repo::{Repo, RepoError},
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
@@ -30,6 +31,10 @@ use services::services::{
     inbox_integrations::linear_update_issue_state,
     inbox_outbound::post_started_if_needed,
     share::ShareError,
+    slack::{
+        build_task_completed_message_json, get_task_completed_text, get_vk_task_url,
+        SlackClient, TaskCompletionStatus,
+    },
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
@@ -297,6 +302,7 @@ pub async fn update_task(
         Some(s) => Some(s),                     // Non-empty string = update description
         None => existing_task.description,      // Field omitted = keep existing
     };
+    let old_status = existing_task.status.clone();
     let status = payload.status.unwrap_or(existing_task.status);
     let parent_workspace_id = payload
         .parent_workspace_id
@@ -313,10 +319,18 @@ pub async fn update_task(
     )
     .await?;
 
+    // Check if status changed to Done or Cancelled for Slack notifications
+    let status_changed_to_terminal = old_status != task.status
+        && matches!(
+            task.status,
+            db::models::task::TaskStatus::Done | db::models::task::TaskStatus::Cancelled
+        );
+
     if let Ok(Some(inbox_item)) = InboxItem::find_by_task_id(&deployment.db().pool, task.id).await {
         if let Ok(Some(integrations)) =
             ProjectIntegrations::find_by_project_id(&deployment.db().pool, task.project_id).await
         {
+            // Update Linear issue state
             let issue_id = inbox_item
                 .linear_issue_id
                 .as_deref()
@@ -347,6 +361,81 @@ pub async fn update_task(
                 state_id,
             ) {
                 let _ = linear_update_issue_state(api_key, issue_id, state_id).await;
+            }
+
+            // Post Slack notification for Done/Cancelled tasks
+            if status_changed_to_terminal {
+                if let (Some(bot_token), Some(channel_id)) = (
+                    integrations.slack_bot_token.as_ref(),
+                    inbox_item.slack_channel_id.as_ref(),
+                ) {
+                    let completion_status = match task.status {
+                        db::models::task::TaskStatus::Done => TaskCompletionStatus::Done,
+                        db::models::task::TaskStatus::Cancelled => TaskCompletionStatus::Cancelled,
+                        _ => unreachable!(),
+                    };
+
+                    let vk_task_url = get_vk_task_url(&task.project_id, &task.id);
+                    let task_url = if matches!(completion_status, TaskCompletionStatus::Done) {
+                        Some(vk_task_url.as_str())
+                    } else {
+                        None // No link for cancelled tasks
+                    };
+
+                    // Fetch PR URL from the task's workspaces (for Done status)
+                    let pr_url = if matches!(completion_status, TaskCompletionStatus::Done) {
+                        // Get all workspaces for this task, ordered by created_at DESC
+                        let workspaces = Workspace::fetch_all(&deployment.db().pool, Some(task.id))
+                            .await
+                            .unwrap_or_default();
+
+                        // Find the first PR merge from any workspace
+                        let mut found_pr_url: Option<String> = None;
+                        for workspace in workspaces {
+                            if let Ok(merges) = Merge::find_by_workspace_id(&deployment.db().pool, workspace.id).await {
+                                for merge in merges {
+                                    if let Merge::Pr(pr_merge) = merge {
+                                        found_pr_url = Some(pr_merge.pr_info.url);
+                                        break;
+                                    }
+                                }
+                            }
+                            if found_pr_url.is_some() {
+                                break;
+                            }
+                        }
+                        found_pr_url
+                    } else {
+                        None
+                    };
+
+                    let blocks = build_task_completed_message_json(
+                        &inbox_item.title,
+                        task_url,
+                        inbox_item.linear_issue_url.as_deref(),
+                        pr_url.as_deref(),
+                        completion_status,
+                        None, // No user mention for done/cancelled
+                    );
+                    let text = get_task_completed_text(&inbox_item.title, completion_status, None);
+                    let client = SlackClient::new(bot_token);
+
+                    // Post as thread reply if we have the original message ts
+                    if let Some(ts) = inbox_item.slack_message_ts.as_ref() {
+                        if let Err(e) = client
+                            .post_message_json(channel_id, &text, blocks.clone(), Some(ts))
+                            .await
+                        {
+                            tracing::warn!("Failed to post Slack thread reply for task status: {}", e);
+                        }
+                    }
+
+                    // Post as channel message
+                    if let Err(e) = client.post_message_json(channel_id, &text, blocks, None).await
+                    {
+                        tracing::warn!("Failed to post Slack channel notification for task status: {}", e);
+                    }
+                }
             }
         }
     }

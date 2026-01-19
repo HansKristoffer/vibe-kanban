@@ -211,6 +211,99 @@ pub trait ContainerService {
             }
         };
         self.notification_service().notify(&title, &message).await;
+
+        // Send Slack notification for tasks moving to In Review
+        self.notify_task_in_review_to_slack(ctx).await;
+    }
+
+    /// Send Slack notification when a task moves to In Review
+    async fn notify_task_in_review_to_slack(&self, ctx: &ExecutionContext) {
+        use db::models::inbox_item::InboxItem;
+        use db::models::project_integrations::ProjectIntegrations;
+
+        // Look up the inbox item for this task
+        let inbox_item = match InboxItem::find_by_task_id(&self.db().pool, ctx.task.id).await {
+            Ok(Some(item)) => item,
+            Ok(None) => {
+                tracing::debug!("No inbox item found for task {}, skipping Slack notification", ctx.task.id);
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to look up inbox item for task {}: {}", ctx.task.id, e);
+                return;
+            }
+        };
+
+        // Check if Slack is configured
+        let integrations = match ProjectIntegrations::find_by_project_id(&self.db().pool, ctx.task.project_id).await {
+            Ok(Some(i)) => i,
+            _ => return,
+        };
+
+        let (bot_token, channel_id) = match (integrations.slack_bot_token.as_ref(), inbox_item.slack_channel_id.as_ref()) {
+            (Some(t), Some(c)) => (t, c),
+            _ => return,
+        };
+
+        // Build URLs
+        let vk_task_url = super::slack::get_vk_task_url(&ctx.task.project_id, &ctx.task.id);
+
+        // Send the notification
+        super::slack::notify_task_in_review(
+            bot_token,
+            channel_id,
+            inbox_item.slack_message_ts.as_deref(),
+            &inbox_item.title,
+            Some(&vk_task_url),
+            inbox_item.linear_issue_url.as_deref(),
+            inbox_item.slack_accepted_by_user_id.as_deref(),
+        ).await;
+    }
+
+    /// Send Slack notification when a task execution fails (deprecated - now handled by notify_task_in_review_to_slack)
+    #[allow(dead_code)]
+    async fn notify_task_failed_to_slack(&self, ctx: &ExecutionContext) {
+        use db::models::inbox_item::InboxItem;
+        use db::models::project_integrations::ProjectIntegrations;
+
+        // Look up the inbox item for this task
+        let inbox_item = match InboxItem::find_by_task_id(&self.db().pool, ctx.task.id).await {
+            Ok(Some(item)) => item,
+            Ok(None) => {
+                tracing::debug!("No inbox item found for task {}, skipping Slack notification", ctx.task.id);
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to look up inbox item for task {}: {}", ctx.task.id, e);
+                return;
+            }
+        };
+
+        // Check if Slack is configured
+        let integrations = match ProjectIntegrations::find_by_project_id(&self.db().pool, ctx.task.project_id).await {
+            Ok(Some(i)) => i,
+            _ => return,
+        };
+
+        let (bot_token, channel_id) = match (integrations.slack_bot_token.as_ref(), inbox_item.slack_channel_id.as_ref()) {
+            (Some(t), Some(c)) => (t, c),
+            _ => return,
+        };
+
+        // Build URLs
+        let vk_task_url = super::slack::get_vk_task_url(&ctx.task.project_id, &ctx.task.id);
+
+        // Send the notification
+        super::slack::notify_task_failed(
+            bot_token,
+            channel_id,
+            inbox_item.slack_message_ts.as_deref(),
+            &inbox_item.title,
+            Some(&vk_task_url),
+            inbox_item.linear_issue_url.as_deref(),
+            None, // PR URL not available in this deprecated path
+            inbox_item.slack_accepted_by_user_id.as_deref(),
+        ).await;
     }
 
     /// Cleanup executions marked as running in the db, call at startup

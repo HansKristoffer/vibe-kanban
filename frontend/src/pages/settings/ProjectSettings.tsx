@@ -21,7 +21,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
@@ -111,6 +112,19 @@ export function ProjectSettings() {
   const [sentryOrgSlug, setSentryOrgSlug] = useState('');
   const [sentryProjectSlug, setSentryProjectSlug] = useState('');
 
+  // Slack integration state
+  const [slackBotToken, setSlackBotToken] = useState('');
+  const [slackSigningSecret, setSlackSigningSecret] = useState('');
+  const [slackChannelId, setSlackChannelId] = useState('');
+
+  // Integration section enabled states (for collapsible UI)
+  const [linearEnabled, setLinearEnabled] = useState(false);
+  const [intercomEnabled, setIntercomEnabled] = useState(false);
+  const [modjoEnabled, setModjoEnabled] = useState(false);
+  const [posthogEnabled, setPosthogEnabled] = useState(false);
+  const [sentryEnabled, setSentryEnabled] = useState(false);
+  const [slackEnabled, setSlackEnabled] = useState(false);
+
   // Environment variables state
   const [envVars, setEnvVars] = useState<EnvVarEntry[]>([]);
   const [envVarsLoading, setEnvVarsLoading] = useState(false);
@@ -138,6 +152,8 @@ export function ProjectSettings() {
       manual: `${base}/api/webhooks/manual/${token}`,
       posthog: `${base}/api/webhooks/posthog/${token}`,
       sentry: `${base}/api/webhooks/sentry/${token}`,
+      slack_commands: `${base}/api/webhooks/slack/commands`,
+      slack_interactivity: `${base}/api/webhooks/slack/interactivity`,
     };
   }, [integrations]);
 
@@ -284,6 +300,40 @@ export function ProjectSettings() {
         setPosthogProjectId(data.posthog_project_id ?? '');
         setSentryOrgSlug(data.sentry_org_slug ?? '');
         setSentryProjectSlug(data.sentry_project_slug ?? '');
+        setSlackChannelId(data.slack_channel_id ?? '');
+
+        // Set enabled states based on whether any config exists
+        setLinearEnabled(
+          data.linear_api_key_configured ||
+          data.linear_webhook_secret_configured ||
+          Boolean(data.linear_team_id)
+        );
+        setIntercomEnabled(
+          data.intercom_access_token_configured ||
+          data.intercom_webhook_secret_configured ||
+          Boolean(data.intercom_admin_id)
+        );
+        setModjoEnabled(
+          data.modjo_api_key_configured ||
+          data.modjo_webhook_secret_configured
+        );
+        setPosthogEnabled(
+          data.posthog_api_key_configured ||
+          data.posthog_webhook_secret_configured ||
+          Boolean(data.posthog_host) ||
+          Boolean(data.posthog_project_id)
+        );
+        setSentryEnabled(
+          data.sentry_api_token_configured ||
+          data.sentry_webhook_secret_configured ||
+          Boolean(data.sentry_org_slug) ||
+          Boolean(data.sentry_project_slug)
+        );
+        setSlackEnabled(
+          data.slack_bot_token_configured ||
+          data.slack_signing_secret_configured ||
+          Boolean(data.slack_channel_id)
+        );
       })
       .catch((err) => {
         setIntegrationsError(
@@ -505,6 +555,9 @@ export function ProjectSettings() {
         sentry_api_token: null,
         sentry_org_slug: sentryOrgSlug || null,
         sentry_project_slug: sentryProjectSlug || null,
+        slack_bot_token: null,
+        slack_signing_secret: null,
+        slack_channel_id: slackChannelId || null,
         clear_linear_api_key: null,
         clear_linear_webhook_secret: null,
         clear_intercom_access_token: null,
@@ -515,6 +568,8 @@ export function ProjectSettings() {
         clear_sentry_webhook_secret: null,
         clear_posthog_api_key: null,
         clear_sentry_api_token: null,
+        clear_slack_bot_token: null,
+        clear_slack_signing_secret: null,
         linear_team_id: linearTeamId || null,
         linear_state_id_todo: linearStateTodo || null,
         linear_state_id_inprogress: linearStateInProgress || null,
@@ -554,6 +609,12 @@ export function ProjectSettings() {
       if (sentryApiToken.trim()) {
         payload.sentry_api_token = sentryApiToken.trim();
       }
+      if (slackBotToken.trim()) {
+        payload.slack_bot_token = slackBotToken.trim();
+      }
+      if (slackSigningSecret.trim()) {
+        payload.slack_signing_secret = slackSigningSecret.trim();
+      }
 
       const updated = await projectIntegrationsApi.update(
         selectedProjectId,
@@ -570,6 +631,8 @@ export function ProjectSettings() {
       setSentryWebhookSecret('');
       setPosthogApiKey('');
       setSentryApiToken('');
+      setSlackBotToken('');
+      setSlackSigningSecret('');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
@@ -738,9 +801,9 @@ export function ProjectSettings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Integrations (Inbox)</CardTitle>
+              <CardTitle>Integrations</CardTitle>
               <CardDescription>
-                Configure Linear, Intercom, and Modjo for the Inbox.
+                Configure integrations for the Inbox. Enable an integration to configure it.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -759,357 +822,638 @@ export function ProjectSettings() {
 
               {integrations && (
                 <>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Linear API Key</Label>
-                      <Input
-                        type="password"
-                        value={linearApiKey}
-                        onChange={(e) => setLinearApiKey(e.target.value)}
-                        placeholder={
-                          integrations.linear_api_key_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear Webhook Secret</Label>
-                      <Input
-                        type="password"
-                        value={linearWebhookSecret}
-                        onChange={(e) => setLinearWebhookSecret(e.target.value)}
-                        placeholder={
-                          integrations.linear_webhook_secret_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Intercom Access Token</Label>
-                      <Input
-                        type="password"
-                        value={intercomAccessToken}
-                        onChange={(e) => setIntercomAccessToken(e.target.value)}
-                        placeholder={
-                          integrations.intercom_access_token_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Intercom Admin ID</Label>
-                      <Input
-                        value={intercomAdminId}
-                        onChange={(e) => setIntercomAdminId(e.target.value)}
-                        placeholder="Admin ID for internal notes"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Intercom Webhook Secret</Label>
-                      <Input
-                        type="password"
-                        value={intercomWebhookSecret}
-                        onChange={(e) => setIntercomWebhookSecret(e.target.value)}
-                        placeholder={
-                          integrations.intercom_webhook_secret_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Modjo API Key</Label>
-                      <Input
-                        type="password"
-                        value={modjoApiKey}
-                        onChange={(e) => setModjoApiKey(e.target.value)}
-                        placeholder={
-                          integrations.modjo_api_key_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Modjo Webhook Secret</Label>
-                      <Input
-                        type="password"
-                        value={modjoWebhookSecret}
-                        onChange={(e) => setModjoWebhookSecret(e.target.value)}
-                        placeholder={
-                          integrations.modjo_webhook_secret_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>PostHog Webhook Secret</Label>
-                      <Input
-                        type="password"
-                        value={posthogWebhookSecret}
-                        onChange={(e) => setPosthogWebhookSecret(e.target.value)}
-                        placeholder={
-                          integrations.posthog_webhook_secret_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>PostHog API Key</Label>
-                      <Input
-                        type="password"
-                        value={posthogApiKey}
-                        onChange={(e) => setPosthogApiKey(e.target.value)}
-                        placeholder={
-                          integrations.posthog_api_key_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>PostHog Host</Label>
-                      <Input
-                        value={posthogHost}
-                        onChange={(e) => setPosthogHost(e.target.value)}
-                        placeholder="https://app.posthog.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>PostHog Project ID</Label>
-                      <Input
-                        value={posthogProjectId}
-                        onChange={(e) => setPosthogProjectId(e.target.value)}
-                        placeholder="Project ID for event API"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sentry Webhook Secret</Label>
-                      <Input
-                        type="password"
-                        value={sentryWebhookSecret}
-                        onChange={(e) => setSentryWebhookSecret(e.target.value)}
-                        placeholder={
-                          integrations.sentry_webhook_secret_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sentry API Token</Label>
-                      <Input
-                        type="password"
-                        value={sentryApiToken}
-                        onChange={(e) => setSentryApiToken(e.target.value)}
-                        placeholder={
-                          integrations.sentry_api_token_configured
-                            ? 'Configured'
-                            : 'Not set'
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sentry Org Slug</Label>
-                      <Input
-                        value={sentryOrgSlug}
-                        onChange={(e) => setSentryOrgSlug(e.target.value)}
-                        placeholder="your-org"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sentry Project Slug</Label>
-                      <Input
-                        value={sentryProjectSlug}
-                        onChange={(e) => setSentryProjectSlug(e.target.value)}
-                        placeholder="your-project"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Linear Team</Label>
-                      <Select
-                        value={linearTeamId}
-                        onValueChange={setLinearTeamId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a team" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearTeamsQuery.data?.length ? (
-                            linearTeamsQuery.data.map((team) => (
-                              <SelectItem key={team.id} value={team.id}>
-                                {team.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-teams" disabled>
-                              No teams available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear Backlog (Todo)</Label>
-                      <Select
-                        value={linearStateTodo}
-                        onValueChange={setLinearStateTodo}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select state" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearStatesQuery.data?.length ? (
-                            linearStatesQuery.data.map((state) => (
-                              <SelectItem key={state.id} value={state.id}>
-                                {state.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-states" disabled>
-                              No states available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear In Progress</Label>
-                      <Select
-                        value={linearStateInProgress}
-                        onValueChange={setLinearStateInProgress}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select state" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearStatesQuery.data?.length ? (
-                            linearStatesQuery.data.map((state) => (
-                              <SelectItem key={state.id} value={state.id}>
-                                {state.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-states" disabled>
-                              No states available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear In Review</Label>
-                      <Select
-                        value={linearStateInReview}
-                        onValueChange={setLinearStateInReview}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select state" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearStatesQuery.data?.length ? (
-                            linearStatesQuery.data.map((state) => (
-                              <SelectItem key={state.id} value={state.id}>
-                                {state.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-states" disabled>
-                              No states available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear Done</Label>
-                      <Select
-                        value={linearStateDone}
-                        onValueChange={setLinearStateDone}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select state" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearStatesQuery.data?.length ? (
-                            linearStatesQuery.data.map((state) => (
-                              <SelectItem key={state.id} value={state.id}>
-                                {state.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-states" disabled>
-                              No states available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Linear Cancelled</Label>
-                      <Select
-                        value={linearStateCancelled}
-                        onValueChange={setLinearStateCancelled}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select state" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linearStatesQuery.data?.length ? (
-                            linearStatesQuery.data.map((state) => (
-                              <SelectItem key={state.id} value={state.id}>
-                                {state.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-states" disabled>
-                              No states available
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {webhookUrls && (
-                    <div className="space-y-2 text-sm">
-                      <div className="font-medium">Webhook URLs</div>
-                      {!integrations.webhook_urls && (
-                        <div className="text-xs text-muted-foreground">
-                          Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the
-                          server to show public URLs.
+                  {/* Linear Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setLinearEnabled(!linearEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setLinearEnabled(!linearEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={linearEnabled}
+                          onCheckedChange={setLinearEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">Linear</div>
+                          <div className="text-sm text-muted-foreground">
+                            Sync tasks with Linear issues
+                          </div>
                         </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          linearEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {linearEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>API Key</Label>
+                            <Input
+                              type="password"
+                              value={linearApiKey}
+                              onChange={(e) => setLinearApiKey(e.target.value)}
+                              placeholder={
+                                integrations.linear_api_key_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Webhook Secret</Label>
+                            <Input
+                              type="password"
+                              value={linearWebhookSecret}
+                              onChange={(e) => setLinearWebhookSecret(e.target.value)}
+                              placeholder={
+                                integrations.linear_webhook_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Team</Label>
+                            <Select
+                              value={linearTeamId}
+                              onValueChange={setLinearTeamId}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a team" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearTeamsQuery.data?.length ? (
+                                  linearTeamsQuery.data.map((team) => (
+                                    <SelectItem key={team.id} value={team.id}>
+                                      {team.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-teams" disabled>
+                                    No teams available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Backlog (Todo) State</Label>
+                            <Select
+                              value={linearStateTodo}
+                              onValueChange={setLinearStateTodo}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearStatesQuery.data?.length ? (
+                                  linearStatesQuery.data.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-states" disabled>
+                                    No states available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>In Progress State</Label>
+                            <Select
+                              value={linearStateInProgress}
+                              onValueChange={setLinearStateInProgress}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearStatesQuery.data?.length ? (
+                                  linearStatesQuery.data.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-states" disabled>
+                                    No states available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>In Review State</Label>
+                            <Select
+                              value={linearStateInReview}
+                              onValueChange={setLinearStateInReview}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearStatesQuery.data?.length ? (
+                                  linearStatesQuery.data.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-states" disabled>
+                                    No states available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Done State</Label>
+                            <Select
+                              value={linearStateDone}
+                              onValueChange={setLinearStateDone}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearStatesQuery.data?.length ? (
+                                  linearStatesQuery.data.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-states" disabled>
+                                    No states available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Cancelled State</Label>
+                            <Select
+                              value={linearStateCancelled}
+                              onValueChange={setLinearStateCancelled}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {linearStatesQuery.data?.length ? (
+                                  linearStatesQuery.data.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-states" disabled>
+                                    No states available
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="text-sm text-muted-foreground break-all pt-2 border-t">
+                            Webhook URL: {webhookUrls.linear}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Intercom Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIntercomEnabled(!intercomEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setIntercomEnabled(!intercomEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={intercomEnabled}
+                          onCheckedChange={setIntercomEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">Intercom</div>
+                          <div className="text-sm text-muted-foreground">
+                            Create tasks from Intercom conversations
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          intercomEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {intercomEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Access Token</Label>
+                            <Input
+                              type="password"
+                              value={intercomAccessToken}
+                              onChange={(e) => setIntercomAccessToken(e.target.value)}
+                              placeholder={
+                                integrations.intercom_access_token_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Admin ID</Label>
+                            <Input
+                              value={intercomAdminId}
+                              onChange={(e) => setIntercomAdminId(e.target.value)}
+                              placeholder="Admin ID for internal notes"
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Webhook Secret</Label>
+                            <Input
+                              type="password"
+                              value={intercomWebhookSecret}
+                              onChange={(e) => setIntercomWebhookSecret(e.target.value)}
+                              placeholder={
+                                integrations.intercom_webhook_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="text-sm text-muted-foreground break-all pt-2 border-t">
+                            Webhook URL: {webhookUrls.intercom}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modjo Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setModjoEnabled(!modjoEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setModjoEnabled(!modjoEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={modjoEnabled}
+                          onCheckedChange={setModjoEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">Modjo</div>
+                          <div className="text-sm text-muted-foreground">
+                            Import call insights from Modjo
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          modjoEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {modjoEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>API Key</Label>
+                            <Input
+                              type="password"
+                              value={modjoApiKey}
+                              onChange={(e) => setModjoApiKey(e.target.value)}
+                              placeholder={
+                                integrations.modjo_api_key_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Webhook Secret</Label>
+                            <Input
+                              type="password"
+                              value={modjoWebhookSecret}
+                              onChange={(e) => setModjoWebhookSecret(e.target.value)}
+                              placeholder={
+                                integrations.modjo_webhook_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="text-sm text-muted-foreground break-all pt-2 border-t">
+                            Webhook URL: {webhookUrls.modjo}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PostHog Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setPosthogEnabled(!posthogEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setPosthogEnabled(!posthogEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={posthogEnabled}
+                          onCheckedChange={setPosthogEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">PostHog</div>
+                          <div className="text-sm text-muted-foreground">
+                            Create tasks from PostHog events
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          posthogEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {posthogEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>API Key</Label>
+                            <Input
+                              type="password"
+                              value={posthogApiKey}
+                              onChange={(e) => setPosthogApiKey(e.target.value)}
+                              placeholder={
+                                integrations.posthog_api_key_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Webhook Secret</Label>
+                            <Input
+                              type="password"
+                              value={posthogWebhookSecret}
+                              onChange={(e) => setPosthogWebhookSecret(e.target.value)}
+                              placeholder={
+                                integrations.posthog_webhook_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Host</Label>
+                            <Input
+                              value={posthogHost}
+                              onChange={(e) => setPosthogHost(e.target.value)}
+                              placeholder="https://app.posthog.com"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Project ID</Label>
+                            <Input
+                              value={posthogProjectId}
+                              onChange={(e) => setPosthogProjectId(e.target.value)}
+                              placeholder="Project ID for event API"
+                            />
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="text-sm text-muted-foreground break-all pt-2 border-t">
+                            Webhook URL: {webhookUrls.posthog}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sentry Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSentryEnabled(!sentryEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setSentryEnabled(!sentryEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={sentryEnabled}
+                          onCheckedChange={setSentryEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">Sentry</div>
+                          <div className="text-sm text-muted-foreground">
+                            Create tasks from Sentry issues
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          sentryEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {sentryEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>API Token</Label>
+                            <Input
+                              type="password"
+                              value={sentryApiToken}
+                              onChange={(e) => setSentryApiToken(e.target.value)}
+                              placeholder={
+                                integrations.sentry_api_token_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Webhook Secret</Label>
+                            <Input
+                              type="password"
+                              value={sentryWebhookSecret}
+                              onChange={(e) => setSentryWebhookSecret(e.target.value)}
+                              placeholder={
+                                integrations.sentry_webhook_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Org Slug</Label>
+                            <Input
+                              value={sentryOrgSlug}
+                              onChange={(e) => setSentryOrgSlug(e.target.value)}
+                              placeholder="your-org"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Project Slug</Label>
+                            <Input
+                              value={sentryProjectSlug}
+                              onChange={(e) => setSentryProjectSlug(e.target.value)}
+                              placeholder="your-project"
+                            />
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="text-sm text-muted-foreground break-all pt-2 border-t">
+                            Webhook URL: {webhookUrls.sentry}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Slack Integration */}
+                  <div className="border rounded-lg">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSlackEnabled(!slackEnabled)}
+                      onKeyDown={(e) => e.key === 'Enter' && setSlackEnabled(!slackEnabled)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={slackEnabled}
+                          onCheckedChange={setSlackEnabled}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="text-left">
+                          <div className="font-medium">Slack</div>
+                          <div className="text-sm text-muted-foreground">
+                            Post PRDs to Slack with interactive buttons
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-5 w-5 text-muted-foreground transition-transform ${
+                          slackEnabled ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {slackEnabled && (
+                      <div className="border-t p-4 space-y-4">
+                        <div className="rounded-md bg-muted/50 p-3 text-sm">
+                          <div className="font-medium mb-2">Required Bot Scopes</div>
+                          <div className="text-muted-foreground space-y-1">
+                            <div><code className="bg-muted px-1 rounded">chat:write</code> - Post messages to channels</div>
+                            <div><code className="bg-muted px-1 rounded">chat:write.public</code> - Post to public channels without joining</div>
+                            <div><code className="bg-muted px-1 rounded">commands</code> - Handle slash commands</div>
+                            <div><code className="bg-muted px-1 rounded">im:write</code> - Send direct messages to users</div>
+                          </div>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Bot Token</Label>
+                            <Input
+                              type="password"
+                              value={slackBotToken}
+                              onChange={(e) => setSlackBotToken(e.target.value)}
+                              placeholder={
+                                integrations.slack_bot_token_configured
+                                  ? 'Configured'
+                                  : 'xoxb-...'
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Bot User OAuth Token from your Slack app
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Signing Secret</Label>
+                            <Input
+                              type="password"
+                              value={slackSigningSecret}
+                              onChange={(e) => setSlackSigningSecret(e.target.value)}
+                              placeholder={
+                                integrations.slack_signing_secret_configured
+                                  ? 'Configured'
+                                  : 'Not set'
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Used to verify webhook requests from Slack
+                            </p>
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Channel ID</Label>
+                            <Input
+                              value={slackChannelId}
+                              onChange={(e) => setSlackChannelId(e.target.value)}
+                              placeholder="C01234567"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Channel ID where PRDs will be posted (right-click channel → View channel details → Copy ID)
+                            </p>
+                          </div>
+                        </div>
+                        {webhookUrls && (
+                          <div className="space-y-1 text-sm text-muted-foreground break-all pt-2 border-t">
+                            <div>Slash Command URL: {webhookUrls.slack_commands}</div>
+                            <div>Interactivity URL: {webhookUrls.slack_interactivity}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual Webhook URL */}
+                  {webhookUrls && (
+                    <div className="border rounded-lg p-4 space-y-2">
+                      <div className="font-medium">Manual Webhook</div>
+                      <p className="text-sm text-muted-foreground">
+                        Use this URL to create inbox items programmatically from external sources.
+                      </p>
+                      <div className="text-sm text-muted-foreground break-all">
+                        {webhookUrls.manual}
+                      </div>
+                      {!integrations.webhook_urls && (
+                        <p className="text-xs text-muted-foreground">
+                          Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the server to show public URLs.
+                        </p>
                       )}
-                      <div className="text-muted-foreground break-all">
-                        Linear: {webhookUrls.linear}
-                      </div>
-                      <div className="text-muted-foreground break-all">
-                        Intercom: {webhookUrls.intercom}
-                      </div>
-                      <div className="text-muted-foreground break-all">
-                        Modjo: {webhookUrls.modjo}
-                      </div>
-                      <div className="text-muted-foreground break-all">
-                        Manual: {webhookUrls.manual}
-                      </div>
-                      <div className="text-muted-foreground break-all">
-                        PostHog: {webhookUrls.posthog}
-                      </div>
-                      <div className="text-muted-foreground break-all">
-                        Sentry: {webhookUrls.sentry}
-                      </div>
                     </div>
                   )}
 
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pt-4">
                     <Button
                       onClick={handleSaveIntegrations}
                       disabled={savingIntegrations}
