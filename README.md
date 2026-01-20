@@ -1,3 +1,8 @@
+# Hans quick links
+Install / update: sudo ./install-macos-service.sh --force
+Ngrok: ngrok http 3005 --subdomain abc123
+
+
 <p align="center">
   <a href="https://vibekanban.com">
     <picture>
