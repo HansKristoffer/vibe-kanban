@@ -5,12 +5,22 @@
 # LaunchAgents run in the user session with full keychain access (required for Claude Code OAuth)
 # If the service already exists, it updates the binary while preserving configuration
 #
+# This script automatically handles all initial setup:
+#   - Installs Homebrew (if not present)
+#   - Installs Node.js via Homebrew
+#   - Installs pnpm globally via npm
+#   - Installs Rust via rustup
+#   - Runs pnpm install
+#   - Generates TypeScript types
+#   - Builds the project (via local-build.sh)
+#
 # Usage:
 #   sudo ./install-macos-service.sh [OPTIONS]
 #
 # Options:
 #   --force     Force reinstall (recreates plist even if service exists)
 #   --no-mcp    Skip installing the MCP server binary
+#   --skip-deps Skip dependency installation (Homebrew, Node, pnpm, Rust)
 #   --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
 #   --help      Show this help message
 #
@@ -50,6 +60,7 @@ NC='\033[0m' # No Color
 # Parse arguments
 FORCE_REINSTALL=false
 INSTALL_MCP=true
+SKIP_DEPS=false
 ENABLE_TAILSCALE_FUNNEL=false
 for arg in "$@"; do
     case $arg in
@@ -59,6 +70,10 @@ for arg in "$@"; do
             ;;
         --no-mcp)
             INSTALL_MCP=false
+            shift
+            ;;
+        --skip-deps)
+            SKIP_DEPS=true
             shift
             ;;
         --tailscale-funnel)
@@ -71,11 +86,21 @@ for arg in "$@"; do
             echo "Installs Vibe Kanban as a LaunchAgent (user service with keychain access)."
             echo "This allows Claude Code OAuth authentication to work properly."
             echo ""
+            echo "This script automatically handles all initial setup:"
+            echo "  - Installs Homebrew (if not present)"
+            echo "  - Installs Node.js via Homebrew"
+            echo "  - Installs pnpm globally via npm"
+            echo "  - Installs Rust via rustup"
+            echo "  - Runs pnpm install"
+            echo "  - Generates TypeScript types"
+            echo "  - Builds the project"
+            echo ""
             echo "Options:"
-            echo "  --force     Force reinstall (recreates plist even if service exists)"
-            echo "  --no-mcp    Skip installing the MCP server binary"
+            echo "  --force      Force reinstall (recreates plist even if service exists)"
+            echo "  --no-mcp     Skip installing the MCP server binary"
+            echo "  --skip-deps  Skip dependency installation (Homebrew, Node, pnpm, Rust)"
             echo "  --tailscale-funnel  Enable Tailscale Funnel setup (or use TAILSCALE_FUNNEL=1 in .env)"
-            echo "  --help      Show this help message"
+            echo "  --help       Show this help message"
             echo ""
             echo "Configuration is done via .env file. Copy .env.example to .env and edit:"
             echo "  cp .env.example .env"
@@ -94,6 +119,7 @@ for arg in "$@"; do
             echo "Example:"
             echo "  sudo ./install-macos-service.sh"
             echo "  sudo ./install-macos-service.sh --force"
+            echo "  sudo ./install-macos-service.sh --skip-deps  # If you already have all dependencies"
             exit 0
             ;;
     esac
@@ -186,11 +212,147 @@ fi
 # Pre-flight checks
 echo -e "${CYAN}Running pre-flight checks...${NC}"
 
-# Check for git (required by vibe-kanban)
-if ! command -v git &> /dev/null; then
-    echo -e "${RED}Error: git is not installed. Vibe Kanban requires git.${NC}"
-    echo "Install with: brew install git"
-    exit 1
+# Helper function to run commands as the non-root user
+run_as_user() {
+    sudo -u "$USER" "$@"
+}
+
+# Helper function to check if a command exists for the user
+user_has_command() {
+    sudo -u "$USER" bash -c "command -v $1" &> /dev/null
+}
+
+# Helper function to get user's shell profile
+get_shell_profile() {
+    local shell_name=$(basename "$SHELL")
+    case "$shell_name" in
+        zsh)  echo "${USER_HOME}/.zshrc" ;;
+        bash) echo "${USER_HOME}/.bash_profile" ;;
+        *)    echo "${USER_HOME}/.profile" ;;
+    esac
+}
+
+# Ensure brew is in PATH for sudo commands
+BREW_PATH=""
+if [ -f "/opt/homebrew/bin/brew" ]; then
+    BREW_PATH="/opt/homebrew/bin"
+elif [ -f "/usr/local/bin/brew" ]; then
+    BREW_PATH="/usr/local/bin"
+fi
+
+# Ensure cargo is in PATH for subsequent commands
+export PATH="${USER_HOME}/.cargo/bin:${BREW_PATH}:$PATH"
+
+if [ "$SKIP_DEPS" = false ]; then
+    # ============================================================
+    # DEPENDENCY INSTALLATION SECTION
+    # ============================================================
+    echo -e "${CYAN}Checking and installing dependencies...${NC}"
+
+    # Check for Homebrew
+    if ! user_has_command brew; then
+        echo -e "${YELLOW}Homebrew not found. Installing Homebrew...${NC}"
+        # Install Homebrew as the non-root user
+        run_as_user /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        
+        # Add Homebrew to PATH for this session
+        if [ -f "/opt/homebrew/bin/brew" ]; then
+            BREW_PATH="/opt/homebrew/bin"
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [ -f "/usr/local/bin/brew" ]; then
+            BREW_PATH="/usr/local/bin"
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+        
+        echo -e "${GREEN}Homebrew installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ Homebrew is installed${NC}"
+    fi
+
+    # Check for git (required by vibe-kanban)
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}git not found. Installing git via Homebrew...${NC}"
+        run_as_user "${BREW_PATH}/brew" install git
+        echo -e "${GREEN}git installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ git is installed${NC}"
+    fi
+
+    # Check for Node.js
+    if ! user_has_command node; then
+        echo -e "${YELLOW}Node.js not found. Installing Node.js via Homebrew...${NC}"
+        run_as_user "${BREW_PATH}/brew" install node
+        echo -e "${GREEN}Node.js installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ Node.js is installed ($(node --version))${NC}"
+    fi
+
+    # Check for pnpm
+    if ! user_has_command pnpm; then
+        echo -e "${YELLOW}pnpm not found. Installing pnpm globally via npm...${NC}"
+        run_as_user npm install -g pnpm
+        echo -e "${GREEN}pnpm installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ pnpm is installed${NC}"
+    fi
+
+    # Check for Rust
+    if ! user_has_command rustc; then
+        echo -e "${YELLOW}Rust not found. Installing Rust via rustup...${NC}"
+        # Install rustup non-interactively
+        run_as_user bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
+        
+        # Source cargo env for this session
+        if [ -f "${USER_HOME}/.cargo/env" ]; then
+            source "${USER_HOME}/.cargo/env"
+        fi
+        # Update PATH
+        export PATH="${USER_HOME}/.cargo/bin:$PATH"
+        
+        echo -e "${GREEN}Rust installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ Rust is installed ($(rustc --version | cut -d' ' -f2))${NC}"
+    fi
+
+    # ============================================================
+    # PROJECT SETUP SECTION
+    # ============================================================
+    echo ""
+    echo -e "${CYAN}Setting up project dependencies...${NC}"
+
+    # Run pnpm install if node_modules doesn't exist or package.json is newer
+    if [ ! -d "${SCRIPT_DIR}/node_modules" ] || [ "${SCRIPT_DIR}/package.json" -nt "${SCRIPT_DIR}/node_modules" ]; then
+        echo -e "${YELLOW}Installing npm dependencies with pnpm...${NC}"
+        cd "$SCRIPT_DIR"
+        run_as_user pnpm install
+        echo -e "${GREEN}Dependencies installed successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ npm dependencies are up to date${NC}"
+    fi
+
+    # Generate TypeScript types if needed
+    TYPES_FILE="${SCRIPT_DIR}/shared/types.ts"
+    if [ ! -f "$TYPES_FILE" ]; then
+        echo -e "${YELLOW}Generating TypeScript types...${NC}"
+        cd "$SCRIPT_DIR"
+        run_as_user pnpm run generate-types
+        echo -e "${GREEN}Types generated successfully.${NC}"
+    else
+        echo -e "${GREEN}✓ TypeScript types exist${NC}"
+    fi
+
+    echo ""
+    echo -e "${GREEN}All dependencies are ready!${NC}"
+    echo ""
+else
+    echo -e "${YELLOW}Skipping dependency installation (--skip-deps)${NC}"
+    
+    # Still check for critical dependencies
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}Error: git is not installed. Vibe Kanban requires git.${NC}"
+        echo "Install with: brew install git"
+        exit 1
+    fi
 fi
 
 # Detect platform

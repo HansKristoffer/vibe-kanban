@@ -7,70 +7,77 @@ Build and run Vibe Kanban as a background service on macOS.
 ## Quick Start
 
 ```bash
-# 1. Install prerequisites (if needed)
-brew install node
-npm install -g pnpm
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 2. Build
-pnpm i
-pnpm run generate-types
-./local-build.sh
-
-# 3. Configure environment variables
+# 1. Configure environment variables
 cp .env.example .env
 # Edit .env with your values (required: VK_PUBLIC_BASE_URL, VK_ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 
-# 4. Install & start service (reads .env automatically)
+# 2. Install & start service (handles everything automatically)
 sudo ./install-macos-service.sh
 ```
 
 Done! Access at **http://localhost:3000**
 
+The install script automatically handles:
+- Installing Homebrew (if not present)
+- Installing Node.js, pnpm, and Rust
+- Installing npm dependencies (`pnpm install`)
+- Generating TypeScript types
+- Building the project
+- Installing and starting the service
+
 ---
 
 ## Prerequisites
 
-| Requirement | Install Command |
-|-------------|-----------------|
-| Rust (stable) | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+The install script will automatically install these if missing:
+
+| Requirement | Installed Via |
+|-------------|---------------|
+| Homebrew | Automatic |
 | Node.js (>=18) | `brew install node` |
 | pnpm (>=8) | `npm install -g pnpm` |
+| Rust (stable) | rustup |
 | Git | `brew install git` |
+
+> **Note:** If you already have all prerequisites installed, you can use `--skip-deps` to skip the dependency checks.
 
 ---
 
 ## Installation
 
-### Build the Project
+### Configure Environment
 
-```bash
-pnpm i                      # Install dependencies
-pnpm run generate-types     # Generate TypeScript types
-./local-build.sh            # Build binaries
-```
-
-### Install the Service
-
-First, create your `.env` file with the required variables:
+Create your `.env` file with the required variables:
 
 ```bash
 cp .env.example .env
 # Edit .env with your values
 ```
 
-Then run the install script (it reads `.env` automatically):
+### Run the Install Script
 
 ```bash
 sudo ./install-macos-service.sh
 ```
 
 The script automatically:
+- Checks and installs all prerequisites (Homebrew, Node.js, pnpm, Rust)
+- Installs npm dependencies with `pnpm install`
+- Generates TypeScript types
+- Builds the project (via `local-build.sh`)
 - Installs binary to `/usr/local/bin/vibe-kanban`
 - Creates a LaunchAgent (auto-starts on user login)
 - Starts the service immediately
 - Verifies the service is healthy
 - Migrates from LaunchDaemon to LaunchAgent if needed
+
+### Skip Dependency Installation
+
+If you already have all prerequisites installed:
+
+```bash
+sudo ./install-macos-service.sh --skip-deps
+```
 
 ### Custom Port
 
@@ -80,14 +87,14 @@ Set `PORT=8080` in your `.env` file, then run the install script.
 
 ## Updating
 
-Same script handles updates — just rebuild and run:
+Same script handles updates — just pull and run:
 
 ```bash
 git pull                        # Get latest code
-pnpm i                          # Update dependencies (if needed)
-./local-build.sh                # Rebuild
-sudo ./install-macos-service.sh # Update service
+sudo ./install-macos-service.sh # Handles deps, build, and update
 ```
+
+The script automatically detects when dependencies need updating and rebuilds as needed.
 
 > **Note:** When updating, the script preserves your existing service configuration unless you use `--force`.
 
@@ -245,13 +252,20 @@ sudo chown -R $(whoami) ~/Library/Application\ Support/ai.bloop.vibe-kanban
 sudo ./install-macos-service.sh [OPTIONS]
 
 Options:
-  --force     Force reinstall (recreates service config)
-  --no-mcp    Skip MCP binary installation
+  --force      Force reinstall (recreates service config)
+  --no-mcp     Skip MCP binary installation
+  --skip-deps  Skip dependency installation (use if you already have Homebrew, Node, pnpm, Rust)
   --tailscale-funnel  Enable Tailscale Funnel (or use TAILSCALE_FUNNEL=1 in .env)
-  --help      Show help
+  --help       Show help
 ```
 
-The script automatically reads from `.env` in the project directory. See `.env.example` for all available variables.
+The script automatically:
+- Installs all prerequisites (Homebrew, Node.js, pnpm, Rust) if missing
+- Runs `pnpm install` and `pnpm run generate-types`
+- Builds the project with `local-build.sh`
+- Reads configuration from `.env` in the project directory
+
+See `.env.example` for all available environment variables.
 
 ---
 
