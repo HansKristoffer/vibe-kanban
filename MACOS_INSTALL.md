@@ -2,6 +2,8 @@
 
 Build and run Vibe Kanban as a background service on macOS.
 
+> **Note:** Vibe Kanban runs as a LaunchAgent (user service) rather than a LaunchDaemon. This ensures the service has access to your login keychain, which is required for Claude Code OAuth authentication to work properly. The service starts automatically when you log in.
+
 ## Quick Start
 
 ```bash
@@ -65,9 +67,10 @@ sudo ./install-macos-service.sh
 
 The script automatically:
 - Installs binary to `/usr/local/bin/vibe-kanban`
-- Creates a LaunchDaemon (auto-starts on boot)
+- Creates a LaunchAgent (auto-starts on user login)
 - Starts the service immediately
 - Verifies the service is healthy
+- Migrates from LaunchDaemon to LaunchAgent if needed
 
 ### Custom Port
 
@@ -103,19 +106,21 @@ ls /usr/local/bin/vibe-kanban.backup.*
 
 # Restore
 sudo mv /usr/local/bin/vibe-kanban.backup.TIMESTAMP /usr/local/bin/vibe-kanban
-sudo launchctl unload /Library/LaunchDaemons/com.vibekanban.server.plist
-sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
+launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist
+launchctl load ~/Library/LaunchAgents/com.vibekanban.server.plist
 ```
 
 ---
 
 ## Service Management
 
+LaunchAgents run in your user session, so no `sudo` is needed for these commands:
+
 | Action | Command |
 |--------|---------|
-| Start | `sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist` |
-| Stop | `sudo launchctl unload /Library/LaunchDaemons/com.vibekanban.server.plist` |
-| Status | `sudo launchctl list \| grep vibekanban` |
+| Start | `launchctl load ~/Library/LaunchAgents/com.vibekanban.server.plist` |
+| Stop | `launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist` |
+| Status | `launchctl list \| grep vibekanban` |
 | Logs | `tail -f /var/vibe-kanban/vibe-kanban.log` |
 
 ---
@@ -126,7 +131,7 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 |------|-------|
 | Binary | `/usr/local/bin/vibe-kanban` |
 | MCP Binary | `/usr/local/bin/vibe-kanban-mcp` |
-| Service Config | `/Library/LaunchDaemons/com.vibekanban.server.plist` |
+| Service Config | `~/Library/LaunchAgents/com.vibekanban.server.plist` |
 | Logs | `/var/vibe-kanban/vibe-kanban.log` |
 | Database & Config | `~/Library/Application Support/ai.bloop.vibe-kanban/` |
 
@@ -151,10 +156,10 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 
 Alternatively, edit the plist directly:
 ```bash
-sudo nano /Library/LaunchDaemons/com.vibekanban.server.plist
+nano ~/Library/LaunchAgents/com.vibekanban.server.plist
 # Then restart:
-sudo launchctl unload /Library/LaunchDaemons/com.vibekanban.server.plist
-sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
+launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist
+launchctl load ~/Library/LaunchAgents/com.vibekanban.server.plist
 ```
 
 ### Environment Variables
@@ -194,8 +199,8 @@ sudo ./uninstall-macos-service.sh
 
 Or manually:
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/com.vibekanban.server.plist
-sudo rm -f /Library/LaunchDaemons/com.vibekanban.server.plist
+launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist
+rm -f ~/Library/LaunchAgents/com.vibekanban.server.plist
 sudo rm -f /usr/local/bin/vibe-kanban
 sudo rm -f /usr/local/bin/vibe-kanban-mcp
 sudo rm -rf /var/vibe-kanban

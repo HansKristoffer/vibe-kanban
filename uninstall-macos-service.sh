@@ -1,12 +1,19 @@
 #!/bin/bash
 
-# Uninstallation script for Vibe Kanban macOS LaunchDaemon
+# Uninstallation script for Vibe Kanban macOS LaunchAgent
+# Also handles cleanup of old LaunchDaemon installations
 
 set -e
 
 SERVICE_NAME="com.vibekanban.server"
-PLIST_PATH="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
+USER="${SUDO_USER:-$(whoami)}"
+USER_HOME=$(eval echo "~$USER")
+# LaunchAgent plist location
+PLIST_PATH="${USER_HOME}/Library/LaunchAgents/${SERVICE_NAME}.plist"
+# Old LaunchDaemon location (for cleanup during migration)
+OLD_DAEMON_PLIST="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
 INSTALL_DIR="/usr/local/bin/vibe-kanban"
+MCP_INSTALL_DIR="/usr/local/bin/vibe-kanban-mcp"
 WORK_DIR="/var/vibe-kanban"
 
 # Colors
@@ -23,22 +30,40 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Unload service if running
-if launchctl list | grep -q "$SERVICE_NAME"; then
-    echo "Stopping service..."
-    launchctl unload "$PLIST_PATH" 2>/dev/null || true
+# Unload LaunchAgent if running (as target user)
+if sudo -u "$USER" launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+    echo "Stopping LaunchAgent..."
+    sudo -u "$USER" launchctl unload "$PLIST_PATH" 2>/dev/null || true
 fi
 
-# Remove plist
+# Also check for old LaunchDaemon
+if launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+    echo "Stopping old LaunchDaemon..."
+    launchctl unload "$OLD_DAEMON_PLIST" 2>/dev/null || true
+fi
+
+# Remove LaunchAgent plist
 if [ -f "$PLIST_PATH" ]; then
-    echo "Removing LaunchDaemon plist..."
+    echo "Removing LaunchAgent plist..."
     rm -f "$PLIST_PATH"
 fi
 
-# Remove binary
+# Remove old LaunchDaemon plist if it exists
+if [ -f "$OLD_DAEMON_PLIST" ]; then
+    echo "Removing old LaunchDaemon plist..."
+    rm -f "$OLD_DAEMON_PLIST"
+fi
+
+# Remove main binary
 if [ -f "$INSTALL_DIR" ]; then
     echo "Removing binary..."
     rm -f "$INSTALL_DIR"
+fi
+
+# Remove MCP binary
+if [ -f "$MCP_INSTALL_DIR" ]; then
+    echo "Removing MCP binary..."
+    rm -f "$MCP_INSTALL_DIR"
 fi
 
 # Optionally remove working directory (ask first)

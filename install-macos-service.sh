@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Install/Update script for Vibe Kanban as a macOS LaunchDaemon
-# This script installs or updates vibe-kanban to run as a system service
+# Install/Update script for Vibe Kanban as a macOS LaunchAgent
+# This script installs or updates vibe-kanban to run as a user service
+# LaunchAgents run in the user session with full keychain access (required for Claude Code OAuth)
 # If the service already exists, it updates the binary while preserving configuration
 #
 # Usage:
@@ -12,6 +13,9 @@
 #   --no-mcp    Skip installing the MCP server binary
 #   --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
 #   --help      Show this help message
+#
+# Note: sudo is required for installing binaries to /usr/local/bin and creating /var/vibe-kanban
+# The LaunchAgent itself runs without elevated privileges in the user session.
 
 set -e
 
@@ -27,9 +31,12 @@ is_truthy() {
 INSTALL_DIR="/usr/local/bin/vibe-kanban"
 MCP_INSTALL_DIR="/usr/local/bin/vibe-kanban-mcp"
 SERVICE_NAME="com.vibekanban.server"
-PLIST_PATH="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
 USER="${SUDO_USER:-$(whoami)}"
 USER_HOME=$(eval echo "~$USER")
+# LaunchAgent plist goes in user's LaunchAgents directory
+PLIST_PATH="${USER_HOME}/Library/LaunchAgents/${SERVICE_NAME}.plist"
+# Also track old daemon path for migration
+OLD_DAEMON_PLIST="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
 WORK_DIR="/var/vibe-kanban"
 
 # Colors for output
@@ -60,6 +67,9 @@ for arg in "$@"; do
             ;;
         --help|-h)
             echo "Usage: sudo ./install-macos-service.sh [OPTIONS]"
+            echo ""
+            echo "Installs Vibe Kanban as a LaunchAgent (user service with keychain access)."
+            echo "This allows Claude Code OAuth authentication to work properly."
             echo ""
             echo "Options:"
             echo "  --force     Force reinstall (recreates plist even if service exists)"
@@ -224,6 +234,31 @@ if command -v git &> /dev/null && [ -d ".git" ]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 fi
 
+# Migrate from old LaunchDaemon if it exists
+if [ -f "$OLD_DAEMON_PLIST" ]; then
+    echo -e "${YELLOW}Found old LaunchDaemon installation. Migrating to LaunchAgent...${NC}"
+    # Stop and remove old daemon
+    if launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+        echo "Stopping old LaunchDaemon..."
+        launchctl unload "$OLD_DAEMON_PLIST" 2>/dev/null || true
+        # Wait for process to stop
+        for i in {1..10}; do
+            if ! pgrep -f "$INSTALL_DIR" > /dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+    echo "Removing old LaunchDaemon plist..."
+    rm -f "$OLD_DAEMON_PLIST"
+    # Force reinstall to create new LaunchAgent
+    FORCE_REINSTALL=true
+fi
+
+# Create LaunchAgents directory if it doesn't exist
+mkdir -p "${USER_HOME}/Library/LaunchAgents"
+chown "$USER" "${USER_HOME}/Library/LaunchAgents"
+
 # Determine if this is an install or update
 IS_UPDATE=false
 if [ -f "$PLIST_PATH" ] && [ -f "$INSTALL_DIR" ]; then
@@ -237,7 +272,7 @@ fi
 if [ "$IS_UPDATE" = true ]; then
     echo -e "${BLUE}Service found. Updating Vibe Kanban...${NC}"
 else
-    echo -e "${GREEN}Installing Vibe Kanban as a macOS service...${NC}"
+    echo -e "${GREEN}Installing Vibe Kanban as a macOS LaunchAgent...${NC}"
 fi
 
 if [ -n "$VERSION" ]; then
@@ -247,10 +282,11 @@ fi
 # If updating, stop the service first
 SERVICE_RUNNING=false
 if [ "$IS_UPDATE" = true ] || [ "$FORCE_REINSTALL" = true ]; then
-    if launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+    # Check if service is running (as the target user, not root)
+    if sudo -u "$USER" launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
         SERVICE_RUNNING=true
         echo "Stopping service..."
-        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        sudo -u "$USER" launchctl unload "$PLIST_PATH" 2>/dev/null || true
         # Wait for process to stop
         for i in {1..10}; do
             if ! pgrep -f "$INSTALL_DIR" > /dev/null 2>&1; then
@@ -322,10 +358,10 @@ fi
 mkdir -p "$WORK_DIR"
 chown "$USER" "$WORK_DIR"
 
-# Create or preserve LaunchDaemon plist
+# Create or preserve LaunchAgent plist
 if [ "$IS_UPDATE" = false ]; then
     # Create new plist for fresh installation
-    echo "Creating LaunchDaemon..."
+    echo "Creating LaunchAgent..."
     cat > "$PLIST_PATH" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -349,8 +385,6 @@ if [ "$IS_UPDATE" = false ]; then
     <string>${WORK_DIR}/vibe-kanban.error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>HOME</key>
-        <string>${USER_HOME}</string>
         <key>HOST</key>
         <string>${HOST}</string>
         <key>PORT</key>
@@ -366,30 +400,28 @@ if [ "$IS_UPDATE" = false ]; then
         <key>GOOGLE_CLIENT_SECRET</key>
         <string>${GOOGLE_CLIENT_SECRET}</string>
     </dict>
-    <key>UserName</key>
-    <string>${USER}</string>
 </dict>
 </plist>
 EOF
 
-    # Set permissions
-    chown root:wheel "$PLIST_PATH"
+    # Set permissions (owned by user, not root)
+    chown "$USER" "$PLIST_PATH"
     chmod 644 "$PLIST_PATH"
 else
     echo "Preserving existing service configuration..."
 fi
 
-# Load/Reload the service
+# Load/Reload the service (as the target user, not root)
 echo "Starting service..."
-launchctl load "$PLIST_PATH" 2>/dev/null || launchctl load -w "$PLIST_PATH"
+sudo -u "$USER" launchctl load "$PLIST_PATH" 2>/dev/null || sudo -u "$USER" launchctl load -w "$PLIST_PATH"
 
 # Wait for service to start and verify health
 echo "Verifying service health..."
 HEALTH_OK=false
 for i in {1..15}; do
     sleep 1
-    # Check if service is listed
-    if launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+    # Check if service is listed (as target user)
+    if sudo -u "$USER" launchctl list 2>/dev/null | grep -q "$SERVICE_NAME"; then
         # Try to reach the health endpoint
         if curl -s --connect-timeout 2 "http://127.0.0.1:${PORT}" > /dev/null 2>&1; then
             HEALTH_OK=true
@@ -474,11 +506,11 @@ echo "  Logs:      ${WORK_DIR}/vibe-kanban.log"
 echo "  Data:      ${USER_HOME}/Library/Application Support/ai.bloop.vibe-kanban/"
 echo "  URL:       http://localhost:${PORT}"
 echo ""
-echo "Service management:"
-echo "  Start:     sudo launchctl load ${PLIST_PATH}"
-echo "  Stop:      sudo launchctl unload ${PLIST_PATH}"
-echo "  Restart:   sudo launchctl unload ${PLIST_PATH} && sudo launchctl load ${PLIST_PATH}"
-echo "  Status:    sudo launchctl list | grep ${SERVICE_NAME}"
+echo "Service management (no sudo needed):"
+echo "  Start:     launchctl load ${PLIST_PATH}"
+echo "  Stop:      launchctl unload ${PLIST_PATH}"
+echo "  Restart:   launchctl unload ${PLIST_PATH} && launchctl load ${PLIST_PATH}"
+echo "  Status:    launchctl list | grep ${SERVICE_NAME}"
 echo "  Logs:      tail -f ${WORK_DIR}/vibe-kanban.log"
 echo ""
 if [ -n "$BACKUP_PATH" ]; then
@@ -488,4 +520,6 @@ fi
 echo "To update in the future, rebuild and run this script again:"
 echo "  ./local-build.sh && sudo ./install-macos-service.sh"
 echo ""
+echo -e "${CYAN}Note: LaunchAgents run in your user session with keychain access.${NC}"
+echo -e "${CYAN}The service will start automatically when you log in.${NC}"
 echo -e "${CYAN}Tip: Logs can grow large. Consider setting up log rotation with newsyslog or logrotate.${NC}"
