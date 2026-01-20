@@ -102,6 +102,7 @@ import {
   ReviewError,
   WorkspaceAutomation,
   StartRalphRequest,
+  ProjectMember,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -367,6 +368,39 @@ export const projectsApi = {
       `/api/projects/${projectId}/repositories/${repoId}`,
       {
         method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+};
+
+export const projectMembersApi = {
+  list: async (projectId: string): Promise<ProjectMember[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/members`, {
+      credentials: 'include',
+    });
+    const result = await handleApiResponse<{ members: ProjectMember[] }>(response);
+    return result.members;
+  },
+  add: async (
+    projectId: string,
+    email: string,
+    role?: string
+  ): Promise<ProjectMember> => {
+    const response = await makeRequest(`/api/projects/${projectId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+      credentials: 'include',
+    });
+    return handleApiResponse<ProjectMember>(response);
+  },
+  remove: async (projectId: string, email: string): Promise<void> => {
+    const params = new URLSearchParams({ email });
+    const response = await makeRequest(
+      `/api/projects/${projectId}/members?${params.toString()}`,
+      {
+        method: 'DELETE',
+        credentials: 'include',
       }
     );
     return handleApiResponse<void>(response);
@@ -1128,6 +1162,57 @@ export const configApi = {
       `/api/agents/check-availability?executor=${encodeURIComponent(agent)}`
     );
     return handleApiResponse<AvailabilityInfo>(response);
+  },
+};
+
+export interface AuthUser {
+  email: string;
+  name: string | null;
+  picture_url: string | null;
+}
+
+export interface AuthSessionResponse {
+  authenticated: boolean;
+  user: AuthUser | null;
+}
+
+export interface GoogleStartResponse {
+  authorize_url: string;
+}
+
+export const authApi = {
+  startGoogleLogin: async (returnTo?: string): Promise<GoogleStartResponse> => {
+    const params = new URLSearchParams();
+    if (returnTo) {
+      params.set('return_to', returnTo);
+    }
+    const query = params.toString();
+    const response = await makeRequest(
+      `/api/auth/google/start${query ? `?${query}` : ''}`,
+      {
+        credentials: 'include',
+      }
+    );
+    return handleApiResponse<GoogleStartResponse>(response);
+  },
+  session: async (): Promise<AuthSessionResponse> => {
+    const response = await makeRequest('/api/auth/session', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    return handleApiResponse<AuthSessionResponse>(response);
+  },
+  logout: async (): Promise<void> => {
+    const response = await makeRequest('/api/auth/logout', {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new ApiError(
+        `Logout failed with status ${response.status}`,
+        response.status,
+        response
+      );
+    }
   },
 };
 

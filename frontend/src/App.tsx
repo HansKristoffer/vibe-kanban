@@ -35,6 +35,7 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 import { ReleaseNotesDialog } from '@/components/dialogs/global/ReleaseNotesDialog';
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
+import { AuthGuard } from '@/components/AuthGuard';
 
 // Design scope components
 import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
@@ -211,13 +212,15 @@ function App() {
   return (
     <BrowserRouter>
       <UserSystemProvider>
-        <ClickedElementsProvider>
-          <ProjectProvider>
-            <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-              <AppContent />
-            </HotkeysProvider>
-          </ProjectProvider>
-        </ClickedElementsProvider>
+        <AuthGuard>
+          <ClickedElementsProvider>
+            <ProjectProvider>
+              <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+                <AppContent />
+              </HotkeysProvider>
+            </ProjectProvider>
+          </ClickedElementsProvider>
+        </AuthGuard>
       </UserSystemProvider>
     </BrowserRouter>
   );

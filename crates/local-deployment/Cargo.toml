@@ -30,3 +30,7 @@ portable-pty = "0.8"
 
 [dev-dependencies]
 tempfile = "3.8"
+
+[features]
+default = []
+qa-mode = []

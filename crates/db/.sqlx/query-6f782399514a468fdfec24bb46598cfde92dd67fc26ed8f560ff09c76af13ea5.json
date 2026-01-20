@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM project_members WHERE project_id = $1 AND email = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6f782399514a468fdfec24bb46598cfde92dd67fc26ed8f560ff09c76af13ea5"
+}

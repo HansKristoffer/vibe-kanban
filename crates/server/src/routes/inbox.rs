@@ -1,6 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+    Extension,
     response::{IntoResponse, Redirect},
     routing::{get, post},
 };
@@ -8,12 +9,13 @@ use db::models::inbox_item::{
     CreateInboxItem, InboxItem, InboxItemKind, InboxItemStatus, InboxSource, UpdateInboxItem,
 };
 use db::models::project_integrations::ProjectIntegrations;
+use db::models::project_member::ProjectMember;
 use db::models::task::{CreateTask, Task};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::AuthenticatedUser};
 use deployment::Deployment;
 use services::services::anthropic::{
     AnthropicClient, DEFAULT_INBOX_PRD_TEMPLATE,
@@ -61,8 +63,10 @@ async fn classify_prd(
 pub async fn list_inbox_items(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<InboxQuery>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<ApiResponse<Vec<InboxItem>>>, ApiError> {
     let pool = &deployment.db().pool;
+    ensure_project_member(pool, query.project_id, &user.email).await?;
     let items = if let Some(status) = query.status {
         InboxItem::list_by_project_and_status(pool, query.project_id, status).await?
     } else {
@@ -74,17 +78,21 @@ pub async fn list_inbox_items(
 pub async fn get_inbox_item(
     State(deployment): State<DeploymentImpl>,
     Path(inbox_id): Path<Uuid>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
     let item = InboxItem::find_by_id(&deployment.db().pool, inbox_id)
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
+    ensure_project_member(&deployment.db().pool, item.project_id, &user.email).await?;
     Ok(Json(ApiResponse::success(item)))
 }
 
 pub async fn create_inbox_item(
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateInboxItemRequest>,
 ) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
+    ensure_project_member(&deployment.db().pool, payload.project_id, &user.email).await?;
     let project = db::models::project::Project::find_by_id(
         &deployment.db().pool,
         payload.project_id,
@@ -137,12 +145,14 @@ pub async fn create_inbox_item(
 pub async fn update_inbox_item(
     State(deployment): State<DeploymentImpl>,
     Path(inbox_id): Path<Uuid>,
+    Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<UpdateInboxItemRequest>,
 ) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
     let pool = &deployment.db().pool;
     let item = InboxItem::find_by_id(pool, inbox_id)
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
+    ensure_project_member(pool, item.project_id, &user.email).await?;
 
     let updated = InboxItem::update(
         pool,
@@ -166,17 +176,42 @@ pub async fn update_inbox_item(
 pub async fn accept_inbox_item(
     State(deployment): State<DeploymentImpl>,
     Path(inbox_id): Path<Uuid>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<ApiResponse<AcceptInboxResponse>>, ApiError> {
     let pool = &deployment.db().pool;
     let item = InboxItem::find_by_id(pool, inbox_id)
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
+    ensure_project_member(pool, item.project_id, &user.email).await?;
 
+    let response = accept_inbox_item_internal(pool, &item).await?;
+    Ok(Json(ApiResponse::success(response)))
+}
+
+pub async fn decline_inbox_item(
+    State(deployment): State<DeploymentImpl>,
+    Path(inbox_id): Path<Uuid>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let item = InboxItem::find_by_id(pool, inbox_id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
+    ensure_project_member(pool, item.project_id, &user.email).await?;
+
+    let updated = decline_inbox_item_internal(pool, &item).await?;
+    Ok(Json(ApiResponse::success(updated)))
+}
+
+async fn accept_inbox_item_internal(
+    pool: &sqlx::SqlitePool,
+    item: &InboxItem,
+) -> Result<AcceptInboxResponse, ApiError> {
     if matches!(item.status, InboxItemStatus::Accepted) {
         let task_id = item
             .task_id
             .ok_or_else(|| ApiError::BadRequest("Inbox item is accepted without task".to_string()))?;
-        return Ok(Json(ApiResponse::success(AcceptInboxResponse { task_id })));
+        return Ok(AcceptInboxResponse { task_id });
     }
 
     // 1. Create task first (so we have task_id for Linear issue)
@@ -257,18 +292,13 @@ pub async fn accept_inbox_item(
     )
     .await?;
 
-    Ok(Json(ApiResponse::success(AcceptInboxResponse { task_id: task.id })))
+    Ok(AcceptInboxResponse { task_id: task.id })
 }
 
-pub async fn decline_inbox_item(
-    State(deployment): State<DeploymentImpl>,
-    Path(inbox_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
-    let pool = &deployment.db().pool;
-    let item = InboxItem::find_by_id(pool, inbox_id)
-        .await?
-        .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
-
+async fn decline_inbox_item_internal(
+    pool: &sqlx::SqlitePool,
+    item: &InboxItem,
+) -> Result<InboxItem, ApiError> {
     let updated = InboxItem::update(
         pool,
         item.id,
@@ -285,7 +315,19 @@ pub async fn decline_inbox_item(
     )
     .await?;
 
-    Ok(Json(ApiResponse::success(updated)))
+    Ok(updated)
+}
+
+async fn ensure_project_member(
+    pool: &sqlx::SqlitePool,
+    project_id: Uuid,
+    email: &str,
+) -> Result<(), ApiError> {
+    match ProjectMember::is_member(pool, project_id, email).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ApiError::Forbidden("Access denied".to_string())),
+        Err(err) => Err(ApiError::Database(err)),
+    }
 }
 
 pub async fn accept_inbox_item_action(
@@ -297,7 +339,7 @@ pub async fn accept_inbox_item_action(
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
 
-    let _ = accept_inbox_item(State(deployment.clone()), Path(item.id)).await?;
+    let _ = accept_inbox_item_internal(pool, &item).await?;
     let refreshed = InboxItem::find_by_id(pool, item.id)
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
@@ -317,7 +359,7 @@ pub async fn decline_inbox_item_action(
         .await?
         .ok_or_else(|| ApiError::BadRequest("Inbox item not found".to_string()))?;
 
-    let _ = decline_inbox_item(State(deployment), Path(item.id)).await?;
+    let _ = decline_inbox_item_internal(pool, &item).await?;
     let redirect = format!("/projects/{}/inbox", item.project_id);
     Ok(Redirect::to(&redirect))
 }

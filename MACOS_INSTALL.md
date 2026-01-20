@@ -204,12 +204,36 @@ sudo ./install-macos-service.sh [OPTIONS]
 Options:
   --force     Force reinstall (recreates service config)
   --no-mcp    Skip MCP binary installation
+  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
   --help      Show help
 ```
 
 ---
 
 ## Remote Access
+
+### Public HTTPS (Tailscale Funnel)
+
+If you want a public HTTPS URL via Tailscale Funnel (recommended over binding directly to a public interface):
+
+```bash
+HOST=127.0.0.1 PORT=3000 TAILSCALE_FUNNEL=1 sudo ./install-macos-service.sh --force
+```
+
+Requirements:
+- Tailscale is installed and connected (`tailscale up`)
+- Your tailnet allows Funnel for this node (ACL/nodeAttrs)
+- MagicDNS/HTTPS enabled for your tailnet
+
+Get the URL / verify status:
+
+```bash
+sudo tailscale funnel status
+```
+
+> Funnel publishes to the public internet at a URL like `https://<machine>.<tailnet>.ts.net`.
+
+### Direct IP (LAN/WAN)
 
 The service binds to `0.0.0.0` by default, allowing remote connections.
 

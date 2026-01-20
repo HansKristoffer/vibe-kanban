@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id as \"id!: Uuid\",\n                      p.name,\n                      p.default_agent_working_dir,\n                      p.inbox_prd_template,\n                      p.remote_project_id as \"remote_project_id: Uuid\",\n                      p.created_at as \"created_at!: DateTime<Utc>\",\n                      p.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM projects p\n               JOIN project_members pm ON pm.project_id = p.id\n               WHERE pm.email = $1\n               ORDER BY p.created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_agent_working_dir",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "inbox_prd_template",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "remote_project_id: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c5669bf30e4b747db5b75f6e4070af4675a3893a80ac64579ea1af11cbd2095a"
+}

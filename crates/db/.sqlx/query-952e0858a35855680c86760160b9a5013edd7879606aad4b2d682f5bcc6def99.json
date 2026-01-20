@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT project_id as \"project_id!: Uuid\",\n                      email,\n                      role,\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM project_members\n               WHERE project_id = $1\n               ORDER BY email ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "email",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "role",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "952e0858a35855680c86760160b9a5013edd7879606aad4b2d682f5bcc6def99"
+}

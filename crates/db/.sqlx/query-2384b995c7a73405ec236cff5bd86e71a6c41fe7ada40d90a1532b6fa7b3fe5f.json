@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT project_id as \"project_id!: Uuid\"\n               FROM project_members\n               WHERE email = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2384b995c7a73405ec236cff5bd86e71a6c41fe7ada40d90a1532b6fa7b3fe5f"
+}

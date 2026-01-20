@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!: String\",\n                      user_id as \"user_id!: Uuid\",\n                      expires_at as \"expires_at!: DateTime<Utc>\",\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM auth_sessions\n               WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "expires_at!: DateTime<Utc>",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0244a210878353ad2d99a64013db60aa96d01373d37151c42c8e42d2a4aaa9bb"
+}

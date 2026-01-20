@@ -37,6 +37,12 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     sentry_utils::init_once(SentrySource::Backend);
 
+    // Validate OAuth config before starting server
+    if let Err(err) = server::routes::auth::validate_oauth_config() {
+        eprintln!("Configuration error: {}", err);
+        std::process::exit(1);
+    }
+
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let filter_string = format!(
         "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level}",

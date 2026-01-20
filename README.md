@@ -110,6 +110,9 @@ The following environment variables can be configured at build time or runtime:
 | `HOST` | Runtime | `127.0.0.1` | Backend server host |
 | `MCP_HOST` | Runtime | Value of `HOST` | MCP server connection host (use `127.0.0.1` when `HOST=0.0.0.0` on Windows) |
 | `MCP_PORT` | Runtime | Value of `BACKEND_PORT` | MCP server connection port |
+| `GOOGLE_CLIENT_ID` | Runtime | Empty | Google OAuth client ID for SSO login |
+| `GOOGLE_CLIENT_SECRET` | Runtime | Empty | Google OAuth client secret for SSO login |
+| `VK_PUBLIC_BASE_URL` | Runtime | Empty | Public base URL (e.g. `https://your-host`); used for OAuth redirect URI and secure cookies |
 | `DISABLE_WORKTREE_ORPHAN_CLEANUP` | Runtime | Not set | Disable git worktree cleanup (for debugging) |
 
 **Build-time variables** must be set when running `pnpm run build`. **Runtime variables** are read when the application starts.

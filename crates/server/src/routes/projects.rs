@@ -14,12 +14,13 @@ use axum::{
 };
 use db::models::{
     project::{CreateProject, Project, ProjectError, SearchResult, UpdateProject},
+    project_member::ProjectMember,
     project_repo::{CreateProjectRepo, ProjectRepo},
     repo::Repo,
 };
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::{
     file_search::SearchQuery, project::ProjectServiceError,
     remote_client::CreateRemoteProjectPayload,
@@ -32,7 +33,7 @@ use utils::{
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, middleware::load_project_middleware,
+    DeploymentImpl, error::ApiError, middleware::{AuthenticatedUser, load_project_middleware},
     routes::{project_env_vars, project_integrations},
 };
 
@@ -49,26 +50,32 @@ pub struct CreateRemoteProjectRequest {
 
 pub async fn get_projects(
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_all(&deployment.db().pool).await?;
+    let projects = Project::find_by_member_email(&deployment.db().pool, &user.email).await?;
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
 pub async fn stream_projects_ws(
     ws: WebSocketUpgrade,
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_projects_ws(socket, deployment).await {
+        if let Err(e) = handle_projects_ws(socket, deployment, user.email).await {
             tracing::warn!("projects WS closed: {}", e);
         }
     })
 }
 
-async fn handle_projects_ws(socket: WebSocket, deployment: DeploymentImpl) -> anyhow::Result<()> {
+async fn handle_projects_ws(
+    socket: WebSocket,
+    deployment: DeploymentImpl,
+    user_email: String,
+) -> anyhow::Result<()> {
     let mut stream = deployment
         .events()
-        .stream_projects_raw()
+        .stream_projects_raw(&user_email)
         .await?
         .map_ok(|msg| msg.to_ws_message_unchecked());
 
@@ -220,6 +227,7 @@ async fn apply_remote_project_link(
 
 pub async fn create_project(
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
     tracing::debug!("Creating project '{}'", payload.name);
@@ -227,7 +235,7 @@ pub async fn create_project(
 
     match deployment
         .project()
-        .create_project(&deployment.db().pool, deployment.repo(), payload)
+        .create_project(&deployment.db().pool, deployment.repo(), payload, Some(&user.email))
         .await
     {
         Ok(project) => {
@@ -262,6 +270,77 @@ pub async fn create_project(
         ))),
         Err(e) => Err(ProjectError::CreateFailed(e.to_string()).into()),
     }
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct ProjectMembersResponse {
+    pub members: Vec<ProjectMember>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct AddProjectMemberRequest {
+    pub email: String,
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct RemoveProjectMemberQuery {
+    pub email: String,
+}
+
+async fn ensure_project_owner(
+    pool: &sqlx::SqlitePool,
+    project_id: Uuid,
+    email: &str,
+) -> Result<(), ApiError> {
+    let members = ProjectMember::list_by_project_id(pool, project_id).await?;
+    let is_owner = members
+        .iter()
+        .any(|member| member.email == email && member.role == "owner");
+    if is_owner {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden("Only project owners can update members".to_string()))
+    }
+}
+
+pub async fn list_project_members(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<ProjectMembersResponse>>, ApiError> {
+    let members = ProjectMember::list_by_project_id(&deployment.db().pool, project.id).await?;
+    Ok(ResponseJson(ApiResponse::success(ProjectMembersResponse {
+        members,
+    })))
+}
+
+pub async fn add_project_member(
+    Extension(project): Extension<Project>,
+    Extension(user): Extension<AuthenticatedUser>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<AddProjectMemberRequest>,
+) -> Result<ResponseJson<ApiResponse<ProjectMember>>, ApiError> {
+    ensure_project_owner(&deployment.db().pool, project.id, &user.email).await?;
+    let role = payload.role.unwrap_or_else(|| "member".to_string());
+    let member =
+        ProjectMember::add_member(&deployment.db().pool, project.id, &payload.email, &role).await?;
+    deployment.events().broadcast_projects_snapshot().await;
+    Ok(ResponseJson(ApiResponse::success(member)))
+}
+
+pub async fn remove_project_member(
+    Extension(project): Extension<Project>,
+    Extension(user): Extension<AuthenticatedUser>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<RemoveProjectMemberQuery>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    ensure_project_owner(&deployment.db().pool, project.id, &user.email).await?;
+    ProjectMember::remove_member(&deployment.db().pool, project.id, &query.email).await?;
+    deployment.events().broadcast_projects_snapshot().await;
+    Ok(ResponseJson(ApiResponse::success(())))
 }
 
 pub async fn update_project(
@@ -577,6 +656,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/",
             get(get_project).put(update_project).delete(delete_project),
         )
+        .route("/members", get(list_project_members).post(add_project_member).delete(remove_project_member))
         .route("/remote/members", get(get_project_remote_members))
         .route("/search", get(search_project_files))
         .route("/open-editor", post(open_project_in_editor))

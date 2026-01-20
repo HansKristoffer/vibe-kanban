@@ -11,7 +11,7 @@ use db::models::{
 use deployment::Deployment;
 use uuid::Uuid;
 
-use crate::DeploymentImpl;
+use crate::{DeploymentImpl, middleware::AuthenticatedUser};
 
 pub async fn load_project_middleware(
     State(deployment): State<DeploymentImpl>,
@@ -19,6 +19,24 @@ pub async fn load_project_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    let user = request
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    match db::models::project_member::ProjectMember::is_member(
+        &deployment.db().pool,
+        project_id,
+        &user.email,
+    )
+    .await
+    {
+        Ok(true) => {}
+        Ok(false) => return Err(StatusCode::FORBIDDEN),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
     // Load the project from the database
     let project = match Project::find_by_id(&deployment.db().pool, project_id).await {
         Ok(Some(project)) => project,
@@ -46,6 +64,12 @@ pub async fn load_task_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    let user = request
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
     // Load the task and validate it belongs to the project
     let task = match Task::find_by_id(&deployment.db().pool, task_id).await {
         Ok(Some(task)) => task,
@@ -57,6 +81,18 @@ pub async fn load_task_middleware(
             tracing::error!("Failed to fetch task {}: {}", task_id, e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
+    };
+
+    match db::models::project_member::ProjectMember::is_member(
+        &deployment.db().pool,
+        task.project_id,
+        &user.email,
+    )
+    .await
+    {
+        Ok(true) => {}
+        Ok(false) => return Err(StatusCode::FORBIDDEN),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
     // Insert both models as extensions

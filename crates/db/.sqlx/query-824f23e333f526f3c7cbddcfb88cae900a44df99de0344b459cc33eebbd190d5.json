@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(\n                   SELECT 1 FROM project_members WHERE project_id = $1 AND email = $2\n               ) as \"exists!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "824f23e333f526f3c7cbddcfb88cae900a44df99de0344b459cc33eebbd190d5"
+}

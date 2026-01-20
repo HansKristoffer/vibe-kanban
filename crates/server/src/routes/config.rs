@@ -4,6 +4,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path, Query, State},
+    http::HeaderMap,
     http,
     response::{Json as ResponseJson, Response},
     routing::{get, put},
@@ -27,11 +28,14 @@ use tokio::fs;
 use ts_rs::TS;
 use utils::{api::oauth::LoginStatus, assets::config_path, response::ApiResponse};
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, routes::auth::AuthUserDto};
+
+pub fn public_router() -> Router<DeploymentImpl> {
+    Router::new().route("/info", get(get_user_system_info))
+}
 
 pub fn router() -> Router<DeploymentImpl> {
     Router::new()
-        .route("/info", get(get_user_system_info))
         .route("/config", put(update_config))
         .route("/sounds/{sound}", get(get_sound))
         .route("/mcp-config", get(get_mcp_servers).post(update_mcp_servers))
@@ -79,15 +83,38 @@ pub struct UserSystemInfo {
     pub environment: Environment,
     /// Capabilities supported per executor (e.g., { "CLAUDE_CODE": ["SESSION_FORK"] })
     pub capabilities: HashMap<String, Vec<BaseAgentCapability>>,
+    /// Currently authenticated user via Google SSO.
+    pub current_user: Option<AuthUserDto>,
 }
 
 // TODO: update frontend, BE schema has changed, this replaces GET /config and /config/constants
 #[axum::debug_handler]
 async fn get_user_system_info(
     State(deployment): State<DeploymentImpl>,
+    headers: HeaderMap,
 ) -> ResponseJson<ApiResponse<UserSystemInfo>> {
     let config = deployment.config().read().await;
     let login_status = deployment.get_login_status().await;
+    let current_user = match crate::middleware::extract_session_cookie(&headers) {
+        Some(session_id) => {
+            let pool = &deployment.db().pool;
+            match db::models::auth_session::AuthSession::find_by_id(pool, &session_id).await {
+                Ok(Some(session)) if session.expires_at > chrono::Utc::now() => {
+                    match db::models::auth_user::AuthUser::find_by_id(pool, session.user_id).await
+                    {
+                        Ok(Some(user)) => Some(AuthUserDto {
+                            email: user.email,
+                            name: user.name,
+                            picture_url: user.picture_url,
+                        }),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        None => None,
+    };
 
     let user_system_info = UserSystemInfo {
         config: config.clone(),
@@ -105,6 +132,7 @@ async fn get_user_system_info(
             }
             caps
         },
+        current_user,
     };
 
     ResponseJson(ApiResponse::success(user_system_info))

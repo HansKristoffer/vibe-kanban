@@ -1,6 +1,7 @@
 use db::models::{
     execution_process::ExecutionProcess,
     project::Project,
+    project_member::ProjectMember,
     scratch::Scratch,
     task::{Task, TaskWithAttemptStatus},
     workspace::Workspace,
@@ -150,6 +151,7 @@ impl EventService {
     /// Stream raw project messages with initial snapshot
     pub async fn stream_projects_raw(
         &self,
+        user_email: &str,
     ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
     {
         fn build_projects_snapshot(projects: Vec<Project>) -> LogMsg {
@@ -175,23 +177,89 @@ impl EventService {
             LogMsg::JsonPatch(serde_json::from_value(patch).unwrap())
         }
 
-        // Get initial snapshot of projects
-        let projects = Project::find_all(&self.db.pool).await?;
+        // Get initial snapshot of projects for this user
+        let projects = Project::find_by_member_email(&self.db.pool, user_email).await?;
         let initial_msg = build_projects_snapshot(projects);
 
         let db_pool = self.db.pool.clone();
 
         // Get filtered event stream (projects only)
+        let user_email = user_email.to_string();
         let filtered_stream =
             BroadcastStream::new(self.msg_store.get_receiver()).filter_map(move |msg_result| {
                 let db_pool = db_pool.clone();
+                let user_email = user_email.clone();
                 async move {
                     match msg_result {
                         Ok(LogMsg::JsonPatch(patch)) => {
-                            if let Some(patch_op) = patch.0.first()
-                                && patch_op.path().starts_with("/projects")
-                            {
-                                return Some(Ok(LogMsg::JsonPatch(patch)));
+                            if let Some(patch_op) = patch.0.first() {
+                                if patch_op.path() == "/projects" {
+                                    let allowed_ids =
+                                        ProjectMember::list_project_ids_for_email(&db_pool, &user_email)
+                                            .await
+                                            .unwrap_or_default();
+                                    if let json_patch::PatchOperation::Replace(op) = patch_op {
+                                        if let Some(map) = op.value.as_object() {
+                                            let filtered: serde_json::Map<String, serde_json::Value> = map
+                                                .iter()
+                                                .filter(|(id, _)| {
+                                                    allowed_ids.iter().any(|pid| pid.to_string() == **id)
+                                                })
+                                                .map(|(id, value)| (id.clone(), value.clone()))
+                                                .collect();
+                                            let filtered_patch = json!([
+                                                {
+                                                    "op": "replace",
+                                                    "path": "/projects",
+                                                    "value": filtered
+                                                }
+                                            ]);
+                                            let filtered_patch =
+                                                serde_json::from_value(filtered_patch).unwrap();
+                                            return Some(Ok(LogMsg::JsonPatch(filtered_patch)));
+                                        }
+                                    }
+                                    return None;
+                                }
+
+                                if patch_op.path().starts_with("/projects/") {
+                                    match patch_op {
+                                        json_patch::PatchOperation::Add(op) => {
+                                            if let Ok(project) =
+                                                serde_json::from_value::<Project>(op.value.clone())
+                                                && ProjectMember::is_member(
+                                                    &db_pool,
+                                                    project.id,
+                                                    &user_email,
+                                                )
+                                                .await
+                                                .unwrap_or(false)
+                                            {
+                                                return Some(Ok(LogMsg::JsonPatch(patch)));
+                                            }
+                                            return None;
+                                        }
+                                        json_patch::PatchOperation::Replace(op) => {
+                                            if let Ok(project) =
+                                                serde_json::from_value::<Project>(op.value.clone())
+                                                && ProjectMember::is_member(
+                                                    &db_pool,
+                                                    project.id,
+                                                    &user_email,
+                                                )
+                                                .await
+                                                .unwrap_or(false)
+                                            {
+                                                return Some(Ok(LogMsg::JsonPatch(patch)));
+                                            }
+                                            return None;
+                                        }
+                                        json_patch::PatchOperation::Remove(_) => {
+                                            return Some(Ok(LogMsg::JsonPatch(patch)));
+                                        }
+                                        _ => {}
+                                    }
+                                }
                             }
                             None
                         }
@@ -202,7 +270,7 @@ impl EventService {
                                 "projects stream lagged; resyncing snapshot"
                             );
 
-                            match Project::find_all(&db_pool).await {
+                            match Project::find_by_member_email(&db_pool, &user_email).await {
                                 Ok(projects) => Some(Ok(build_projects_snapshot(projects))),
                                 Err(err) => {
                                     tracing::error!(

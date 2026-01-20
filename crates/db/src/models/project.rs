@@ -83,6 +83,29 @@ impl Project {
         .await
     }
 
+    pub async fn find_by_member_email(
+        pool: &SqlitePool,
+        email: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Project,
+            r#"SELECT p.id as "id!: Uuid",
+                      p.name,
+                      p.default_agent_working_dir,
+                      p.inbox_prd_template,
+                      p.remote_project_id as "remote_project_id: Uuid",
+                      p.created_at as "created_at!: DateTime<Utc>",
+                      p.updated_at as "updated_at!: DateTime<Utc>"
+               FROM projects p
+               JOIN project_members pm ON pm.project_id = p.id
+               WHERE pm.email = $1
+               ORDER BY p.created_at DESC"#,
+            email
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     /// Find the most actively used projects based on recent task activity
     pub async fn find_most_active(pool: &SqlitePool, limit: i32) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(

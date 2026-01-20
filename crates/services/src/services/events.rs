@@ -43,6 +43,35 @@ impl EventService {
         }
     }
 
+    pub async fn broadcast_projects_snapshot(&self) {
+        match Project::find_all(&self.db.pool).await {
+            Ok(projects) => {
+                let projects_map: serde_json::Map<String, serde_json::Value> = projects
+                    .into_iter()
+                    .map(|project| {
+                        (
+                            project.id.to_string(),
+                            serde_json::to_value(project).unwrap_or(serde_json::Value::Null),
+                        )
+                    })
+                    .collect();
+                let patch = json!([
+                    {
+                        "op": "replace",
+                        "path": "/projects",
+                        "value": projects_map
+                    }
+                ]);
+                if let Ok(patch) = serde_json::from_value(patch) {
+                    self.msg_store.push_patch(patch);
+                }
+            }
+            Err(err) => {
+                tracing::error!("Failed to broadcast project snapshot: {}", err);
+            }
+        }
+    }
+
     async fn push_task_update_for_task(
         pool: &SqlitePool,
         msg_store: Arc<MsgStore>,

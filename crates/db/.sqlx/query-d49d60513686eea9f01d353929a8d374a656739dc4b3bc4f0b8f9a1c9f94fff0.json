@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id as \"id!: Uuid\"\n               FROM projects p\n               WHERE NOT EXISTS (\n                   SELECT 1 FROM project_members pm WHERE pm.project_id = p.id\n               )",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "d49d60513686eea9f01d353929a8d374a656739dc4b3bc4f0b8f9a1c9f94fff0"
+}

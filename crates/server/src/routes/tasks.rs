@@ -18,6 +18,7 @@ use db::models::{
     inbox_item::InboxItem,
     merge::Merge,
     project_integrations::ProjectIntegrations,
+    project_member::ProjectMember,
     repo::{Repo, RepoError},
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     workspace::{CreateWorkspace, Workspace},
@@ -39,6 +40,7 @@ use services::services::{
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
+use sqlx::SqlitePool;
 use ts_rs::TS;
 use utils::{api::oauth::LoginStatus, response::ApiResponse};
 use uuid::Uuid;
@@ -47,6 +49,7 @@ use crate::{
     DeploymentImpl, error::ApiError, middleware::load_task_middleware,
     routes::task_attempts::{RalphModeConfig, WorkspaceRepoInput},
 };
+use crate::middleware::AuthenticatedUser;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskQuery {
@@ -56,7 +59,9 @@ pub struct TaskQuery {
 pub async fn get_tasks(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
+    ensure_project_member(&deployment.db().pool, query.project_id, &user.email).await?;
     let tasks =
         Task::find_by_project_id_with_attempt_status(&deployment.db().pool, query.project_id)
             .await?;
@@ -68,12 +73,15 @@ pub async fn stream_tasks_ws(
     ws: WebSocketUpgrade,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_tasks_ws(socket, deployment, query.project_id).await {
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<impl IntoResponse, ApiError> {
+    ensure_project_member(&deployment.db().pool, query.project_id, &user.email).await?;
+    let project_id = query.project_id;
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(e) = handle_tasks_ws(socket, deployment, project_id).await {
             tracing::warn!("tasks WS closed: {}", e);
         }
-    })
+    }))
 }
 
 async fn handle_tasks_ws(
@@ -120,8 +128,10 @@ pub async fn get_task(
 
 pub async fn create_task(
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    ensure_project_member(&deployment.db().pool, payload.project_id, &user.email).await?;
     let id = Uuid::new_v4();
 
     tracing::debug!(
@@ -161,8 +171,15 @@ pub struct CreateAndStartTaskRequest {
 
 pub async fn create_task_and_start(
     State(deployment): State<DeploymentImpl>,
+    Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateAndStartTaskRequest>,
 ) -> Result<ResponseJson<ApiResponse<TaskWithAttemptStatus>>, ApiError> {
+    ensure_project_member(
+        &deployment.db().pool,
+        payload.task.project_id,
+        &user.email,
+    )
+    .await?;
     if payload.repos.is_empty() {
         return Err(ApiError::BadRequest(
             "At least one repository is required".to_string(),
@@ -625,6 +642,21 @@ pub async fn share_task(
     Ok(ResponseJson(ApiResponse::success(ShareTaskResponse {
         shared_task_id,
     })))
+}
+
+async fn ensure_project_member(
+    pool: &SqlitePool,
+    project_id: Uuid,
+    email: &str,
+) -> Result<(), ApiError> {
+    if email.is_empty() {
+        return Err(ApiError::Unauthorized);
+    }
+    match ProjectMember::is_member(pool, project_id, email).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ApiError::Forbidden("Access denied".to_string())),
+        Err(err) => Err(ApiError::Database(err)),
+    }
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

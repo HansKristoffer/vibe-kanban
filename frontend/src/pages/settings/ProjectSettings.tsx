@@ -27,12 +27,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
-import { projectIntegrationsApi, projectsApi, projectEnvVarsApi, type EnvVarEntry } from '@/lib/api';
+import {
+  projectIntegrationsApi,
+  projectsApi,
+  projectEnvVarsApi,
+  projectMembersApi,
+  type EnvVarEntry,
+} from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
 import type {
   LinearTeam,
   LinearWorkflowState,
   Project,
+  ProjectMember,
   ProjectIntegrationsResponse,
   Repo,
   UpdateProject,
@@ -139,6 +146,14 @@ export function ProjectSettings() {
   const [envVarsError, setEnvVarsError] = useState<string | null>(null);
   const [envVarInputs, setEnvVarInputs] = useState<Record<string, string>>({});
   const [savingEnvVar, setSavingEnvVar] = useState<string | null>(null);
+
+  // Project members state
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingMemberEmail, setRemovingMemberEmail] = useState<string | null>(null);
 
   // Check for unsaved changes (project name)
   const hasUnsavedChanges = useMemo(() => {
@@ -379,6 +394,27 @@ export function ProjectSettings() {
       .finally(() => setEnvVarsLoading(false));
   }, [selectedProjectId]);
 
+  // Fetch project members when project changes
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setMembers([]);
+      return;
+    }
+
+    setMembersLoading(true);
+    setMembersError(null);
+    projectMembersApi
+      .list(selectedProjectId)
+      .then(setMembers)
+      .catch((err) => {
+        setMembersError(
+          err instanceof Error ? err.message : 'Failed to load project members'
+        );
+        setMembers([]);
+      })
+      .finally(() => setMembersLoading(false));
+  }, [selectedProjectId]);
+
   const handleSaveEnvVar = async (name: string) => {
     if (!selectedProjectId) return;
     const value = envVarInputs[name];
@@ -418,6 +454,50 @@ export function ProjectSettings() {
       );
     } finally {
       setSavingEnvVar(null);
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!selectedProjectId || !newMemberEmail.trim()) return;
+    setAddingMember(true);
+    setMembersError(null);
+    try {
+      const member = await projectMembersApi.add(
+        selectedProjectId,
+        newMemberEmail.trim().toLowerCase()
+      );
+      setMembers((prev) => {
+        const existing = prev.find((item) => item.email === member.email);
+        if (existing) {
+          return prev.map((item) =>
+            item.email === member.email ? member : item
+          );
+        }
+        return [...prev, member].sort((a, b) => a.email.localeCompare(b.email));
+      });
+      setNewMemberEmail('');
+    } catch (err) {
+      setMembersError(
+        err instanceof Error ? err.message : 'Failed to add member'
+      );
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (email: string) => {
+    if (!selectedProjectId) return;
+    setRemovingMemberEmail(email);
+    setMembersError(null);
+    try {
+      await projectMembersApi.remove(selectedProjectId, email);
+      setMembers((prev) => prev.filter((item) => item.email !== email));
+    } catch (err) {
+      setMembersError(
+        err instanceof Error ? err.message : 'Failed to remove member'
+      );
+    } finally {
+      setRemovingMemberEmail(null);
     }
   };
 
@@ -1717,6 +1797,98 @@ export function ProjectSettings() {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Project Members */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Members</CardTitle>
+              <CardDescription>
+                Manage the email whitelist for this project.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {membersError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{membersError}</AlertDescription>
+                </Alert>
+              )}
+
+              {membersLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    Loading members...
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {members.map((member) => {
+                    const isOwner = member.role === 'owner';
+                    return (
+                      <div
+                        key={member.email}
+                        className="flex items-center justify-between gap-3 rounded-md border p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium">{member.email}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.role}
+                          </div>
+                        </div>
+                        {!isOwner && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveMember(member.email)}
+                            disabled={removingMemberEmail === member.email}
+                            title="Remove member"
+                          >
+                            {removingMemberEmail === member.email ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {members.length === 0 && (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      No members added yet.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-2">
+                <Label htmlFor="project-member-email">Add member by email</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="project-member-email"
+                    type="email"
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
+                    placeholder="name@company.com"
+                  />
+                  <Button
+                    onClick={handleAddMember}
+                    disabled={addingMember || !newMemberEmail.trim()}
+                  >
+                    {addingMember ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      'Add'
+                    )}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

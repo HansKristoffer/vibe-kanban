@@ -10,9 +10,18 @@
 # Options:
 #   --force     Force reinstall (recreates plist even if service exists)
 #   --no-mcp    Skip installing the MCP server binary
+#   --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
 #   --help      Show this help message
 
 set -e
+
+# Helpers
+is_truthy() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|y|Y|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 # Configuration
 INSTALL_DIR="/usr/local/bin/vibe-kanban"
@@ -21,8 +30,6 @@ SERVICE_NAME="com.vibekanban.server"
 PLIST_PATH="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
 USER="${SUDO_USER:-$(whoami)}"
 USER_HOME=$(eval echo "~$USER")
-PORT="${PORT:-3000}"
-HOST="${HOST:-0.0.0.0}"
 WORK_DIR="/var/vibe-kanban"
 
 # Colors for output
@@ -36,6 +43,7 @@ NC='\033[0m' # No Color
 # Parse arguments
 FORCE_REINSTALL=false
 INSTALL_MCP=true
+ENABLE_TAILSCALE_FUNNEL=false
 for arg in "$@"; do
     case $arg in
         --force)
@@ -46,21 +54,46 @@ for arg in "$@"; do
             INSTALL_MCP=false
             shift
             ;;
+        --tailscale-funnel)
+            ENABLE_TAILSCALE_FUNNEL=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: sudo ./install-macos-service.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --force     Force reinstall (recreates plist even if service exists)"
             echo "  --no-mcp    Skip installing the MCP server binary"
+            echo "  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)"
             echo "  --help      Show this help message"
             echo ""
             echo "Environment variables:"
             echo "  PORT        Server port (default: 3000)"
-            echo "  HOST        Server host (default: 0.0.0.0)"
+            echo "  HOST        Server host (default: 0.0.0.0; auto: 127.0.0.1 when enabling Funnel)"
+            echo "  TAILSCALE_FUNNEL  If set (1/true/yes), enable Tailscale Funnel setup (public URL)"
             exit 0
             ;;
     esac
 done
+
+# Determine whether HOST was explicitly set by caller
+HOST_WAS_SET=false
+if [ -n "${HOST+x}" ]; then
+    HOST_WAS_SET=true
+fi
+
+# Read environment variables
+PORT="${PORT:-3000}"
+if is_truthy "${TAILSCALE_FUNNEL:-}"; then
+    ENABLE_TAILSCALE_FUNNEL=true
+fi
+
+# When enabling Funnel, default HOST to loopback unless explicitly provided.
+DEFAULT_HOST="0.0.0.0"
+if [ "$ENABLE_TAILSCALE_FUNNEL" = true ] && [ "$HOST_WAS_SET" = false ]; then
+    DEFAULT_HOST="127.0.0.1"
+fi
+HOST="${HOST:-$DEFAULT_HOST}"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
@@ -290,6 +323,48 @@ echo ""
 
 if [ "$HEALTH_OK" = true ]; then
     echo -e "${GREEN}Service is healthy and responding on port ${PORT}${NC}"
+
+    if [ "$ENABLE_TAILSCALE_FUNNEL" = true ]; then
+        echo ""
+        echo -e "${CYAN}Configuring Tailscale Funnel...${NC}"
+        echo -e "${YELLOW}Warning: Funnel creates a public internet URL.${NC}"
+
+        if ! command -v tailscale &> /dev/null; then
+            echo -e "${YELLOW}Warning: tailscale CLI not found. Skipping Funnel setup.${NC}"
+            echo "Install Tailscale and run: sudo tailscale funnel --bg --yes ${PORT}"
+        elif ! tailscale status >/dev/null 2>&1; then
+            echo -e "${YELLOW}Warning: Tailscale is not running/logged in. Skipping Funnel setup.${NC}"
+            echo "Run: sudo tailscale status"
+            echo "Then: sudo tailscale up"
+        elif ! tailscale funnel --help >/dev/null 2>&1; then
+            echo -e "${YELLOW}Warning: Your Tailscale version does not support Funnel. Skipping Funnel setup.${NC}"
+            echo "Upgrade Tailscale and then run: sudo tailscale funnel --bg --yes ${PORT}"
+        elif ! tailscale funnel --help 2>/dev/null | grep -q -- '--bg'; then
+            echo -e "${YELLOW}Warning: Your Tailscale CLI does not support --bg for Funnel. Skipping Funnel setup.${NC}"
+            echo "Run manually from a terminal: sudo tailscale funnel ${PORT}"
+        elif ! tailscale funnel --help 2>/dev/null | grep -q -- '--yes'; then
+            echo -e "${YELLOW}Warning: Your Tailscale CLI does not support non-interactive Funnel setup (--yes). Skipping Funnel setup.${NC}"
+            echo "Run manually from a terminal: sudo tailscale funnel ${PORT}"
+        else
+            if tailscale funnel --bg --yes "${PORT}"; then
+                echo -e "${GREEN}Tailscale Funnel enabled.${NC}"
+                FUNNEL_STATUS="$(tailscale funnel status 2>/dev/null || true)"
+                if [ -n "$FUNNEL_STATUS" ]; then
+                    echo "$FUNNEL_STATUS"
+                    FUNNEL_URL="$(echo "$FUNNEL_STATUS" | grep -Eo 'https://[^[:space:]]+' | head -1 || true)"
+                    if [ -n "$FUNNEL_URL" ]; then
+                        echo -e "${GREEN}Public URL: ${FUNNEL_URL}${NC}"
+                    fi
+                else
+                    tailscale funnel status 2>/dev/null || true
+                fi
+            else
+                echo -e "${YELLOW}Warning: Failed to enable Tailscale Funnel.${NC}"
+                echo "You can retry with: sudo tailscale funnel --bg --yes ${PORT}"
+                echo "Check: sudo tailscale funnel status"
+            fi
+        fi
+    fi
 else
     echo -e "${YELLOW}Warning: Could not verify service health. Check logs if issues persist.${NC}"
     echo "  tail -f ${WORK_DIR}/vibe-kanban.log"

@@ -1,4 +1,7 @@
 pub mod coding_agent_turn;
+pub mod auth_session;
+pub mod auth_oauth_state;
+pub mod auth_user;
 pub mod execution_process;
 pub mod execution_process_logs;
 pub mod execution_process_repo_state;
@@ -7,6 +10,7 @@ pub mod inbox_item;
 pub mod inbox_source_cursor;
 pub mod merge;
 pub mod project;
+pub mod project_member;
 pub mod project_env_var;
 pub mod project_integrations;
 pub mod project_repo;

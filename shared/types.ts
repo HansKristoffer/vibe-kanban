@@ -12,6 +12,12 @@ export type SharedTask = { id: string, organization_id: string, project_id: stri
 
 export type UserData = { user_id: string, first_name: string | null, last_name: string | null, username: string | null, };
 
+export type AuthUser = { id: string, email: string, name: string | null, picture_url: string | null, created_at: Date, updated_at: Date, };
+
+export type AuthSession = { id: string, user_id: string, expires_at: Date, created_at: Date, };
+
+export type AuthOAuthState = { id: string, return_to: string | null, expires_at: Date, created_at: Date, };
+
 export type Project = { id: string, name: string, default_agent_working_dir: string | null, inbox_prd_template: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
@@ -25,6 +31,8 @@ export type SearchResult = { path: string, is_file: boolean, match_type: SearchM
 score: bigint, };
 
 export type SearchMatchType = "FileName" | "DirectoryName" | "FullPath";
+
+export type ProjectMember = { project_id: string, email: string, role: string, created_at: Date, };
 
 export type ProjectIntegrations = { project_id: string, webhook_token: string, linear_api_key: string | null, linear_team_id: string | null, linear_state_id_todo: string | null, linear_state_id_inprogress: string | null, linear_state_id_inreview: string | null, linear_state_id_done: string | null, linear_state_id_cancelled: string | null, linear_webhook_secret: string | null, intercom_access_token: string | null, intercom_webhook_secret: string | null, intercom_admin_id: string | null, modjo_api_key: string | null, modjo_webhook_secret: string | null, posthog_webhook_secret: string | null, sentry_webhook_secret: string | null, posthog_api_key: string | null, posthog_host: string | null, posthog_project_id: string | null, sentry_api_token: string | null, sentry_org_slug: string | null, sentry_project_slug: string | null, slack_bot_token: string | null, slack_signing_secret: string | null, slack_channel_id: string | null, created_at: Date, updated_at: Date, };
 
@@ -312,11 +320,23 @@ export type CreateRemoteProjectRequest = { organization_id: string, name: string
 
 export type LinkToExistingRequest = { remote_project_id: string, };
 
+export type ProjectMembersResponse = { members: Array<ProjectMember>, };
+
+export type AddProjectMemberRequest = { email: string, role: string | null, };
+
+export type RemoveProjectMemberQuery = { email: string, };
+
 export type RegisterRepoRequest = { path: string, display_name: string | null, };
 
 export type InitRepoRequest = { parent_path: string, folder_name: string, };
 
 export type TagSearchParams = { search: string | null, };
+
+export type GoogleStartResponse = { authorize_url: string, };
+
+export type AuthUserDto = { email: string, name: string | null, picture_url: string | null, };
+
+export type AuthSessionResponse = { authenticated: boolean, user: AuthUserDto | null, };
 
 export type TokenResponse = { access_token: string, expires_at: string | null, };
 
@@ -324,7 +344,11 @@ export type UserSystemInfo = { config: Config, analytics_user_id: string, login_
 /**
  * Capabilities supported per executor (e.g., { "CLAUDE_CODE": ["SESSION_FORK"] })
  */
-capabilities: { [key in string]?: Array<BaseAgentCapability> }, executors: { [key in BaseCodingAgent]?: ExecutorConfig }, };
+capabilities: { [key in string]?: Array<BaseAgentCapability> }, 
+/**
+ * Currently authenticated user via Google SSO.
+ */
+current_user: AuthUserDto | null, executors: { [key in BaseCodingAgent]?: ExecutorConfig }, };
 
 export type Environment = { os_type: string, os_version: string, os_architecture: string, bitness: string, };
 

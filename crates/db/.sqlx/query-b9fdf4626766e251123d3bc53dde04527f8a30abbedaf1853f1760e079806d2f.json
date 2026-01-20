@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM auth_oauth_states WHERE expires_at <= datetime('now', 'subsec')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "b9fdf4626766e251123d3bc53dde04527f8a30abbedaf1853f1760e079806d2f"
+}

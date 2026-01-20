@@ -76,6 +76,7 @@ impl ProjectService {
         pool: &SqlitePool,
         repo_service: &RepoService,
         payload: CreateProject,
+        owner_email: Option<&str>,
     ) -> Result<Project> {
         // Validate all repository paths and check for duplicates within the payload
         let mut seen_names = HashSet::new();
@@ -104,17 +105,30 @@ impl ProjectService {
 
         let id = Uuid::new_v4();
 
-        let project = Project::create(pool, &payload, id)
+        let mut tx = pool.begin().await?;
+
+        let project = Project::create(&mut *tx, &payload, id)
             .await
             .map_err(|e| ProjectServiceError::Project(ProjectError::CreateFailed(e.to_string())))?;
 
         for repo in &normalized_repos {
             let repo_entity =
-                Repo::find_or_create(pool, Path::new(&repo.git_repo_path), &repo.display_name)
+                Repo::find_or_create(&mut *tx, Path::new(&repo.git_repo_path), &repo.display_name)
                     .await?;
-            ProjectRepo::create(pool, project.id, repo_entity.id).await?;
+            ProjectRepo::create(&mut *tx, project.id, repo_entity.id).await?;
         }
 
+        if let Some(email) = owner_email {
+            db::models::project_member::ProjectMember::add_member_tx(
+                &mut *tx,
+                project.id,
+                email,
+                "owner",
+            )
+            .await?;
+        }
+
+        tx.commit().await?;
         Ok(project)
     }
 

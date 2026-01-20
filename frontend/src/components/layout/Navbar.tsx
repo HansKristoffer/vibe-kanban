@@ -36,9 +36,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { oauthApi } from '@/lib/api';
+import { authApi } from '@/lib/api';
 
 const INTERNAL_NAV = [{ label: 'Projects', icon: FolderOpen, to: '/projects' }];
 
@@ -71,7 +70,8 @@ export function Navbar() {
   const { projectId, project } = useProject();
   const { query, setQuery, active, clear, registerInputRef } = useSearch();
   const handleOpenInEditor = useOpenProjectInEditor(project || null);
-  const { loginStatus, reloadSystem } = useUserSystem();
+  const { reloadSystem, system } = useUserSystem();
+  const currentUser = system.current_user;
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
@@ -112,23 +112,17 @@ export function Navbar() {
     handleOpenInEditor();
   };
 
-  const handleOpenOAuth = async () => {
-    const profile = await OAuthDialog.show();
-    if (profile) {
-      await reloadSystem();
-    }
-  };
-
-  const handleOAuthLogout = async () => {
+  const handleLogout = async () => {
     try {
-      await oauthApi.logout();
+      await authApi.logout();
       await reloadSystem();
+      window.location.reload();
     } catch (err) {
       console.error('Error logging out:', err);
     }
   };
 
-  const isOAuthLoggedIn = loginStatus?.status === 'loggedin';
+  const isSignedIn = Boolean(currentUser);
 
   return (
     <div className="border-b bg-background">
@@ -153,7 +147,7 @@ export function Navbar() {
           </div>
 
           <div className="flex flex-1 items-center justify-end gap-1">
-            {isOAuthLoggedIn && shouldShowSharedToggle ? (
+            {isSignedIn && shouldShowSharedToggle ? (
               <>
                 <div className="flex items-center gap-4">
                   <TooltipProvider>
@@ -314,15 +308,16 @@ export function Navbar() {
 
                   <DropdownMenuSeparator />
 
-                  {isOAuthLoggedIn ? (
-                    <DropdownMenuItem onSelect={handleOAuthLogout}>
+                  {isSignedIn ? (
+                    <DropdownMenuItem onSelect={handleLogout}>
                       <LogOut className="mr-2 h-4 w-4" />
                       {t('common:signOut')}
+                      {currentUser?.email ? ` (${currentUser.email})` : ''}
                     </DropdownMenuItem>
                   ) : (
-                    <DropdownMenuItem onSelect={handleOpenOAuth}>
+                    <DropdownMenuItem disabled>
                       <LogIn className="mr-2 h-4 w-4" />
-                      Sign in
+                      Sign in required
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
