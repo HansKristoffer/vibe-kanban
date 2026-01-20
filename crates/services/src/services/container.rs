@@ -22,6 +22,7 @@ use db::{
         session::{CreateSession, Session, SessionError},
         task::{Task, TaskStatus},
         workspace::{Workspace, WorkspaceError},
+        workspace_automation::{WorkspaceAutomation, WorkspaceAutomationStatus},
         workspace_repo::WorkspaceRepo,
     },
 };
@@ -1015,7 +1016,21 @@ pub trait ContainerService {
         )
         .await?;
 
-        let prompt = task.to_prompt();
+        // Check if Ralph mode is enabled for this workspace
+        let automation =
+            WorkspaceAutomation::find_by_workspace_id(&self.db().pool, workspace.id).await?;
+
+        let prompt = if automation
+            .as_ref()
+            .is_some_and(|a| matches!(a.status, WorkspaceAutomationStatus::Running))
+        {
+            // Ralph mode is enabled - use Ralph prompt for the first iteration
+            let automation = automation.unwrap();
+            build_first_ralph_prompt(&task, automation.iteration, automation.max_iterations)
+        } else {
+            // Normal mode - use plain task prompt
+            task.to_prompt()
+        };
 
         let repos_with_setup: Vec<_> = repos.iter().filter(|r| r.setup_script.is_some()).collect();
 
@@ -1309,4 +1324,35 @@ pub trait ContainerService {
         tracing::debug!("Started next action: {:?}", next_action);
         Ok(())
     }
+}
+
+/// Build the Ralph prompt for the first iteration of a workspace.
+/// The PRD is the Task.description (accessed via `task.to_prompt()`).
+fn build_first_ralph_prompt(task: &Task, iteration: i64, max_iterations: i64) -> String {
+    let task_prompt = task.to_prompt();
+    let mut prompt = String::new();
+
+    prompt.push_str("Ralph mode is enabled for this task.\n");
+    prompt.push_str(&format!("Iteration {iteration}/{max_iterations}.\n\n"));
+
+    prompt.push_str("# Task\n\n");
+    prompt.push_str(&task_prompt);
+    prompt.push_str("\n\n");
+
+    prompt.push_str(
+        "# Ralph Instructions\n\n\
+You are operating in Ralph mode, which runs one checklist item per iteration with fresh context.\n\n\
+## Requirements\n\
+1. The task description above MUST contain a Markdown checklist (lines starting with `- [ ]`).\n\
+2. Select EXACTLY ONE unchecked item from the checklist to implement in this iteration.\n\
+3. Make focused, incremental changes for that single item only.\n\
+4. Create or update `progress.txt` in the workspace root to track which items are complete.\n\
+5. Use existing feedback loops (tests, lint, cleanup scripts) as guardrails.\n\n\
+## Completion\n\
+- When you finish the selected item, stop and let the next iteration handle the next item.\n\
+- When ALL checklist items are complete, output `<promise>COMPLETE</promise>` to signal full task completion.\n\
+- Do NOT output the completion marker until every item is done.\n",
+    );
+
+    prompt
 }

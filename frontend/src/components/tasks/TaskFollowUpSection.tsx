@@ -91,7 +91,8 @@ export function TaskFollowUpSection({
     queryKey: ['ralphStatus', workspaceId],
     queryFn: () => attemptsApi.getRalphStatus(workspaceId!),
     enabled: Boolean(workspaceId),
-    refetchInterval: (data) => (data?.status === 'running' ? 5000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'running' ? 5000 : false,
   });
 
   const stopRalphMutation = useMutation({
@@ -761,8 +762,9 @@ export function TaskFollowUpSection({
                 <div className="space-y-1">
                   <div className="font-medium">Ralph mode</div>
                   <div className="text-xs text-muted-foreground">
-                    {ralphStatus.status} • iteration {ralphStatus.iteration} /{' '}
-                    {ralphStatus.max_iterations}
+                    {ralphStatus.status === 'running'
+                      ? `Running iteration ${ralphStatus.iteration} of ${ralphStatus.max_iterations} (fresh context per run)`
+                      : `${ralphStatus.status} at iteration ${ralphStatus.iteration}`}
                   </div>
                 </div>
                 {ralphStatus.status === 'running' && (

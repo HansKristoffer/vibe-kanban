@@ -1020,16 +1020,70 @@ impl LocalContainerService {
         .await
     }
 
+    /// Start a fresh Ralph iteration with a new agent context.
+    /// Unlike `start_queued_follow_up`, this always creates a new initial request
+    /// rather than reusing an existing agent session.
     async fn start_ralph_follow_up(
         &self,
         ctx: &ExecutionContext,
         prompt: String,
     ) -> Result<ExecutionProcess, ContainerError> {
-        let queued_data = DraftFollowUpData {
-            message: prompt,
-            variant: None,
+        // Get executor from the latest CodingAgent process, or fall back to session's executor
+        let base_executor = match ExecutionProcess::latest_executor_profile_for_session(
+            &self.db.pool,
+            ctx.session.id,
+        )
+        .await
+        .map_err(|e| ContainerError::Other(anyhow!("Failed to get executor profile: {e}")))?
+        {
+            Some(profile) => profile.executor,
+            None => {
+                // No prior execution - use session's executor field
+                let executor_str = ctx.session.executor.as_ref().ok_or_else(|| {
+                    ContainerError::Other(anyhow!(
+                        "No prior execution and no executor configured on session"
+                    ))
+                })?;
+                BaseCodingAgent::from_str(&executor_str.replace('-', "_").to_ascii_uppercase())
+                    .map_err(|_| {
+                        ContainerError::Other(anyhow!("Invalid executor: {}", executor_str))
+                    })?
+            }
         };
-        self.start_queued_follow_up(ctx, &queued_data).await
+
+        let executor_profile_id = ExecutorProfileId {
+            executor: base_executor,
+            variant: None, // Ralph iterations use the default variant
+        };
+
+        let repos =
+            WorkspaceRepo::find_repos_for_workspace(&self.db.pool, ctx.workspace.id).await?;
+        let cleanup_action = self.cleanup_actions_for_repos(&repos);
+
+        let working_dir = ctx
+            .workspace
+            .agent_working_dir
+            .as_ref()
+            .filter(|dir| !dir.is_empty())
+            .cloned();
+
+        // Always use CodingAgentInitialRequest for fresh context (no session reuse)
+        let action = ExecutorAction::new(
+            ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
+                prompt,
+                executor_profile_id: executor_profile_id.clone(),
+                working_dir,
+            }),
+            cleanup_action.map(Box::new),
+        );
+
+        self.start_execution(
+            &ctx.workspace,
+            &ctx.session,
+            &action,
+            &ExecutionProcessRunReason::CodingAgent,
+        )
+        .await
     }
 
     async fn latest_coding_agent_summary(
@@ -1096,20 +1150,15 @@ impl LocalContainerService {
             .filter(|dir| !dir.is_empty())
             .and_then(|dir| workspace_root.as_ref().map(|root| root.join(dir)));
 
-        let mut prd_content = None;
+        // Read progress.txt to get current checklist state
+        // PRD is now sourced from Task.description (via task.to_prompt()), not from filesystem
         let mut progress_content = None;
         if let Some(root) = workspace_root.as_ref() {
-            prd_content = read_optional_file(root.join("PRD.md"));
             progress_content = read_optional_file(root.join("progress.txt"));
         }
-        if prd_content.is_none() || progress_content.is_none() {
+        if progress_content.is_none() {
             if let Some(work_dir) = working_dir {
-                if prd_content.is_none() {
-                    prd_content = read_optional_file(work_dir.join("PRD.md"));
-                }
-                if progress_content.is_none() {
-                    progress_content = read_optional_file(work_dir.join("progress.txt"));
-                }
+                progress_content = read_optional_file(work_dir.join("progress.txt"));
             }
         }
 
@@ -1118,7 +1167,6 @@ impl LocalContainerService {
             automation.iteration + 1,
             automation.max_iterations,
             last_error,
-            prd_content.as_deref(),
             progress_content.as_deref(),
         )
     }
@@ -1128,52 +1176,54 @@ fn contains_completion_marker(summary: &str) -> bool {
     summary.contains("<promise>COMPLETE</promise>")
 }
 
+/// Assemble the Ralph prompt for follow-up iterations.
+/// The PRD (checklist) is sourced from Task.description (passed via `task_prompt`),
+/// not from a separate PRD.md file.
 fn assemble_ralph_prompt(
     task_prompt: &str,
     iteration: i64,
     max_iterations: i64,
     last_error: Option<&str>,
-    prd: Option<&str>,
     progress: Option<&str>,
 ) -> String {
     let mut prompt = String::new();
+
     prompt.push_str("Ralph mode is enabled for this task.\n");
     prompt.push_str(&format!("Iteration {iteration}/{max_iterations}.\n\n"));
-    prompt.push_str("Task:\n");
+
+    prompt.push_str("# Task\n\n");
     prompt.push_str(task_prompt);
     prompt.push_str("\n\n");
 
     if let Some(error) = last_error {
-        prompt.push_str("Last failure excerpt:\n");
+        prompt.push_str("# Last Failure\n\n");
+        prompt.push_str("The previous iteration failed with:\n```\n");
         prompt.push_str(error);
-        prompt.push_str("\n\n");
-    }
-
-    if let Some(prd) = prd {
-        let trimmed = prd.trim();
-        if !trimmed.is_empty() {
-            prompt.push_str("PRD.md:\n");
-            prompt.push_str(trimmed);
-            prompt.push_str("\n\n");
-        }
+        prompt.push_str("\n```\n\n");
     }
 
     if let Some(progress) = progress {
         let trimmed = progress.trim();
         if !trimmed.is_empty() {
-            prompt.push_str("progress.txt:\n");
+            prompt.push_str("# Current Progress (from progress.txt)\n\n");
             prompt.push_str(trimmed);
             prompt.push_str("\n\n");
         }
     }
 
     prompt.push_str(
-        "Instructions:\n\
-1. Decide the highest-priority remaining subtask.\n\
-2. Make a small, focused change.\n\
-3. Use existing feedback loops (tests/lint/cleanup) as guardrails.\n\
-4. Update progress.txt (and PRD.md if present).\n\
-5. If all work is complete, output <promise>COMPLETE</promise>.\n",
+        "# Ralph Instructions\n\n\
+You are operating in Ralph mode, which runs one checklist item per iteration with fresh context.\n\n\
+## Requirements\n\
+1. The task description above MUST contain a Markdown checklist (lines starting with `- [ ]`).\n\
+2. Select EXACTLY ONE unchecked item from the checklist to implement in this iteration.\n\
+3. Make focused, incremental changes for that single item only.\n\
+4. Create or update `progress.txt` in the workspace root to track which items are complete.\n\
+5. Use existing feedback loops (tests, lint, cleanup scripts) as guardrails.\n\n\
+## Completion\n\
+- When you finish the selected item, stop and let the next iteration handle the next item.\n\
+- When ALL checklist items are complete, output `<promise>COMPLETE</promise>` to signal full task completion.\n\
+- Do NOT output the completion marker until every item is done.\n",
     );
 
     prompt
@@ -1211,20 +1261,38 @@ mod tests {
     #[test]
     fn assembles_ralph_prompt_with_optional_sections() {
         let prompt = assemble_ralph_prompt(
-            "Implement feature X",
+            "Implement feature X\n- [ ] step 1\n- [ ] step 2",
             2,
             5,
             Some("tests failed"),
-            Some("- [ ] step 1"),
-            Some("did step 0"),
+            Some("completed step 0"),
         );
 
         assert!(prompt.contains("Iteration 2/5"));
         assert!(prompt.contains("Implement feature X"));
-        assert!(prompt.contains("Last failure excerpt"));
-        assert!(prompt.contains("PRD.md:"));
-        assert!(prompt.contains("progress.txt:"));
+        assert!(prompt.contains("# Last Failure"));
+        assert!(prompt.contains("tests failed"));
+        assert!(prompt.contains("# Current Progress"));
+        assert!(prompt.contains("completed step 0"));
         assert!(prompt.contains("<promise>COMPLETE</promise>"));
+        assert!(prompt.contains("EXACTLY ONE unchecked item"));
+    }
+
+    #[test]
+    fn assembles_ralph_prompt_without_error_or_progress() {
+        let prompt = assemble_ralph_prompt(
+            "Build a feature\n- [ ] item 1",
+            1,
+            10,
+            None,
+            None,
+        );
+
+        assert!(prompt.contains("Iteration 1/10"));
+        assert!(prompt.contains("Build a feature"));
+        assert!(!prompt.contains("# Last Failure"));
+        assert!(!prompt.contains("# Current Progress"));
+        assert!(prompt.contains("Ralph Instructions"));
     }
 }
 

@@ -644,8 +644,10 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                                 Ralph mode
                               </Label>
                               <p className="text-xs text-muted-foreground">
-                                Run multiple autonomous iterations for this
-                                task attempt.
+                                Run multiple autonomous iterations with fresh
+                                context. Task description must contain a
+                                Markdown checklist (- [ ] items). Each run
+                                completes one item.
                               </p>
                             </div>
                             <Switch

@@ -220,7 +220,9 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
                 <div className="space-y-1">
                   <Label className="text-sm">Ralph mode</Label>
                   <p className="text-xs text-muted-foreground">
-                    Run multiple autonomous iterations for this attempt.
+                    Run multiple autonomous iterations with fresh context. Task
+                    description must contain a Markdown checklist (- [ ] items).
+                    Each run completes one item.
                   </p>
                 </div>
                 <Switch
