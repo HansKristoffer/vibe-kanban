@@ -12,11 +12,11 @@ export type SharedTask = { id: string, organization_id: string, project_id: stri
 
 export type UserData = { user_id: string, first_name: string | null, last_name: string | null, username: string | null, };
 
-export type Project = { id: string, name: string, default_agent_working_dir: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, default_agent_working_dir: string | null, inbox_prd_template: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
 
-export type UpdateProject = { name: string | null, };
+export type UpdateProject = { name: string | null, inbox_prd_template: string | null, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, 
 /**
@@ -761,3 +761,27 @@ Analyze the changes in this branch and write:
    - At the end, include a note: "This PR was written using [Vibe Kanban](https://vibekanban.com)"
 
 Use the appropriate CLI tool to update the PR (gh pr edit for GitHub, az repos pr update for Azure DevOps).`;
+export const DEFAULT_INBOX_PRD_TEMPLATE = `## Problem Statement
+The problem that the user is facing, from the user's perspective.
+
+## Solution
+The solution to the problem, from the user's perspective.
+
+## User Stories
+A numbered list of user stories in the format:
+1. As an <actor>, I want a <feature>, so that <benefit>
+
+Include all relevant user stories that cover the feature comprehensively.
+
+## Implementation Decisions
+Key implementation considerations including:
+- Technical clarifications
+- Architectural decisions
+- Schema changes (if applicable)
+- API contracts (if applicable)
+- Specific interactions
+
+Do NOT include specific file paths or code snippets.
+
+## Further Notes
+Any additional context or considerations.`;

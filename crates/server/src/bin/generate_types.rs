@@ -2,6 +2,7 @@ use std::{collections::HashMap, env, fs, path::Path};
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use server::routes::task_attempts::pr::DEFAULT_PR_DESCRIPTION_PROMPT;
+use services::services::anthropic::DEFAULT_INBOX_PRD_TEMPLATE;
 use ts_rs::TS;
 
 fn generate_types_content() -> String {
@@ -268,9 +269,13 @@ fn generate_types_content() -> String {
     let prompt_escaped = DEFAULT_PR_DESCRIPTION_PROMPT
         .replace('\\', "\\\\")
         .replace('`', "\\`");
+    let inbox_prd_template_escaped = DEFAULT_INBOX_PRD_TEMPLATE
+        .replace('\\', "\\\\")
+        .replace('`', "\\`");
     let constants = format!(
-        "export const DEFAULT_PR_DESCRIPTION_PROMPT = `{}`;",
-        prompt_escaped
+        "export const DEFAULT_PR_DESCRIPTION_PROMPT = `{}`;\nexport const DEFAULT_INBOX_PRD_TEMPLATE = `{}`;",
+        prompt_escaped,
+        inbox_prd_template_escaped
     );
 
     format!("{HEADER}\n\n{body}\n\n{constants}")

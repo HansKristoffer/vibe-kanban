@@ -345,6 +345,12 @@
           "helper": "The absolute path to your git repository on disk."
         }
       },
+      "prdTemplate": {
+        "title": "Inbox PRD Template",
+        "description": "Customize the PRD template used for inbox-generated PRDs.",
+        "useCustom": "Use custom PRD template",
+        "helper": "When enabled, this template replaces the default for PRD generation in this project."
+      },
       "save": {
         "button": "Save Project Settings",
         "success": "✓ Project settings saved successfully!",

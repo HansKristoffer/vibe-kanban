@@ -22,6 +22,7 @@ pub struct Project {
     pub id: Uuid,
     pub name: String,
     pub default_agent_working_dir: Option<String>,
+    pub inbox_prd_template: Option<String>,
     pub remote_project_id: Option<Uuid>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
@@ -38,6 +39,7 @@ pub struct CreateProject {
 #[derive(Debug, Deserialize, TS)]
 pub struct UpdateProject {
     pub name: Option<String>,
+    pub inbox_prd_template: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -70,6 +72,7 @@ impl Project {
             r#"SELECT id as "id!: Uuid",
                       name,
                       default_agent_working_dir,
+                      inbox_prd_template,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
@@ -87,6 +90,7 @@ impl Project {
             r#"
             SELECT p.id as "id!: Uuid", p.name,
                    p.default_agent_working_dir,
+                   p.inbox_prd_template,
                    p.remote_project_id as "remote_project_id: Uuid",
                    p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>"
             FROM projects p
@@ -110,6 +114,7 @@ impl Project {
             r#"SELECT id as "id!: Uuid",
                       name,
                       default_agent_working_dir,
+                      inbox_prd_template,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
@@ -127,6 +132,7 @@ impl Project {
             r#"SELECT id as "id!: Uuid",
                       name,
                       default_agent_working_dir,
+                      inbox_prd_template,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
@@ -147,6 +153,7 @@ impl Project {
             r#"SELECT id as "id!: Uuid",
                       name,
                       default_agent_working_dir,
+                      inbox_prd_template,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
@@ -175,6 +182,7 @@ impl Project {
                 RETURNING id as "id!: Uuid",
                           name,
                           default_agent_working_dir,
+                          inbox_prd_template,
                           remote_project_id as "remote_project_id: Uuid",
                           created_at as "created_at!: DateTime<Utc>",
                           updated_at as "updated_at!: DateTime<Utc>""#,
@@ -195,20 +203,28 @@ impl Project {
             .ok_or(sqlx::Error::RowNotFound)?;
 
         let name = payload.name.clone().unwrap_or(existing.name);
+        let inbox_prd_template = match payload.inbox_prd_template.clone() {
+            Some(value) if value.trim().is_empty() => None,
+            Some(value) => Some(value),
+            None => existing.inbox_prd_template,
+        };
 
         sqlx::query_as!(
             Project,
             r#"UPDATE projects
-               SET name = $2
+               SET name = $2,
+                   inbox_prd_template = $3
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          name,
                          default_agent_working_dir,
+                         inbox_prd_template,
                          remote_project_id as "remote_project_id: Uuid",
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             name,
+            inbox_prd_template,
         )
         .fetch_one(pool)
         .await

@@ -17,7 +17,9 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use deployment::Deployment;
-use services::services::anthropic::{AnthropicClient, AnthropicInboxResult};
+use services::services::anthropic::{
+    AnthropicClient, AnthropicInboxResult, DEFAULT_INBOX_PRD_TEMPLATE,
+};
 use services::services::inbox_outbound::post_registered_if_needed;
 use services::services::posthog_sentry_enrichment::{
     fetch_posthog_event, fetch_sentry_issue,
@@ -110,9 +112,23 @@ async fn upsert_inbox_item(
         .map_err(ApiError::from)
 }
 
-async fn classify_payload(input: &str) -> Option<AnthropicInboxResult> {
+fn effective_prd_template(project: &Project) -> &str {
+    project
+        .inbox_prd_template
+        .as_deref()
+        .filter(|template| !template.trim().is_empty())
+        .unwrap_or(DEFAULT_INBOX_PRD_TEMPLATE)
+}
+
+async fn classify_payload(
+    input: &str,
+    prd_template: &str,
+) -> Option<AnthropicInboxResult> {
     let client = AnthropicClient::from_env().ok()?;
-    match client.classify_and_generate_prd(input).await {
+    match client
+        .classify_and_generate_prd_with_template(input, prd_template)
+        .await
+    {
         Ok(result) => Some(result),
         Err(err) => {
             warn!("Anthropic classification failed: {}", err);
@@ -223,7 +239,8 @@ pub async fn linear_webhook(
         &["/data/issue/url", "/data/url", "/issue/url", "/url"],
     );
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
     let mut enrichment_text = raw_payload_json.clone();
@@ -249,7 +266,7 @@ pub async fn linear_webhook(
     } else {
         format!("Title: {}\n\nPayload:\n{}", title, enrichment_text)
     };
-    let classification = classify_payload(&classification_input).await;
+    let classification = classify_payload(&classification_input, prd_template).await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
@@ -316,7 +333,8 @@ pub async fn intercom_webhook(
     .unwrap_or_else(|| "Intercom conversation".to_string());
     let source_url = extract_string(&payload, &["/data/item/url", "/data/url", "/url"]);
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
     let mut enrichment_text = raw_payload_json.clone();
@@ -343,7 +361,11 @@ pub async fn intercom_webhook(
         }
     }
 
-    let classification = classify_payload(&format!("Title: {}\n\nPayload:\n{}", title, enrichment_text)).await;
+    let classification = classify_payload(
+        &format!("Title: {}\n\nPayload:\n{}", title, enrichment_text),
+        prd_template,
+    )
+    .await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
@@ -404,10 +426,15 @@ pub async fn modjo_webhook(
         .unwrap_or_else(|| "Modjo item".to_string());
     let source_url = extract_string(&payload, &["/data/url", "/url"]);
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
-    let classification = classify_payload(&format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json)).await;
+    let classification = classify_payload(
+        &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
+        prd_template,
+    )
+    .await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
@@ -451,10 +478,11 @@ pub async fn manual_webhook(
     let payload: ManualWebhookPayload =
         serde_json::from_slice(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
-    let classification = classify_payload(&payload.body).await;
+    let classification = classify_payload(&payload.body, prd_template).await;
     let mut kind = payload.kind.unwrap_or(InboxItemKind::Other);
     let mut status = InboxItemStatus::Pending;
     let mut prd_markdown = Some(payload.body);
@@ -543,10 +571,15 @@ pub async fn posthog_webhook(
     .unwrap_or_else(|| "PostHog event".to_string());
     let source_url = extract_string(&payload, &["/data/event/url", "/data/url", "/url"]);
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
-    let classification = classify_payload(&format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json)).await;
+    let classification = classify_payload(
+        &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
+        prd_template,
+    )
+    .await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
@@ -629,10 +662,15 @@ pub async fn sentry_webhook(
         &["/data/issue/url", "/issue/url", "/url"],
     );
 
-    let _project = load_project(&deployment, integrations.project_id).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
-    let classification = classify_payload(&format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json)).await;
+    let classification = classify_payload(
+        &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
+        prd_template,
+    )
+    .await;
     let (kind, status, prd_markdown) = match classification {
         Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
@@ -835,8 +873,15 @@ async fn process_slack_command_async(
     project_id: Uuid,
     bot_token: Option<String>,
 ) {
+    let prd_template = match load_project(&deployment, project_id).await {
+        Ok(project) => effective_prd_template(&project).to_string(),
+        Err(err) => {
+            warn!("Failed to load project for Slack command: {}", err);
+            DEFAULT_INBOX_PRD_TEMPLATE.to_string()
+        }
+    };
     // Generate PRD from the text
-    let classification = classify_payload(&command_text).await;
+    let classification = classify_payload(&command_text, &prd_template).await;
     let (title, kind, prd_markdown): (String, InboxItemKind, String) = match classification {
         Some(result) => (
             if result.title.is_empty() { "Task from Slack".to_string() } else { result.title },

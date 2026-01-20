@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ChevronDown, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
@@ -37,14 +38,17 @@ import type {
   UpdateProject,
   UpdateProjectIntegrationsRequest,
 } from 'shared/types';
+import { DEFAULT_INBOX_PRD_TEMPLATE } from 'shared/types';
 
 interface ProjectFormState {
   name: string;
+  inbox_prd_template: string | null;
 }
 
 function projectToFormState(project: Project): ProjectFormState {
   return {
     name: project.name,
+    inbox_prd_template: project.inbox_prd_template ?? null,
   };
 }
 
@@ -522,6 +526,7 @@ export function ProjectSettings() {
     try {
       const updateData: UpdateProject = {
         name: draft.name.trim(),
+        inbox_prd_template: draft.inbox_prd_template ?? '',
       };
 
       updateProject.mutate({
@@ -795,6 +800,60 @@ export function ProjectSettings() {
                     )}
                   </Button>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('settings.projects.prdTemplate.title')}</CardTitle>
+              <CardDescription>
+                {t('settings.projects.prdTemplate.description')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="use-custom-inbox-prd-template"
+                  checked={draft.inbox_prd_template != null}
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      updateDraft({
+                        inbox_prd_template: DEFAULT_INBOX_PRD_TEMPLATE,
+                      });
+                    } else {
+                      updateDraft({ inbox_prd_template: null });
+                    }
+                  }}
+                />
+                <Label
+                  htmlFor="use-custom-inbox-prd-template"
+                  className="cursor-pointer"
+                >
+                  {t('settings.projects.prdTemplate.useCustom')}
+                </Label>
+              </div>
+              <div className="space-y-2">
+                <textarea
+                  id="inbox-prd-template"
+                  className={`flex min-h-[160px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                    draft.inbox_prd_template == null
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                  value={
+                    draft.inbox_prd_template ?? DEFAULT_INBOX_PRD_TEMPLATE
+                  }
+                  disabled={draft.inbox_prd_template == null}
+                  onChange={(e) =>
+                    updateDraft({
+                      inbox_prd_template: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.projects.prdTemplate.helper')}
+                </p>
               </div>
             </CardContent>
           </Card>

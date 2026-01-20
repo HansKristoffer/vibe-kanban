@@ -15,7 +15,9 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use deployment::Deployment;
-use services::services::anthropic::AnthropicClient;
+use services::services::anthropic::{
+    AnthropicClient, DEFAULT_INBOX_PRD_TEMPLATE,
+};
 use services::services::inbox_integrations::linear_create_issue;
 use utils::response::ApiResponse;
 
@@ -44,9 +46,15 @@ pub struct UpdateInboxItemRequest {
     pub prd_markdown: Option<String>,
 }
 
-async fn classify_prd(input: &str) -> Option<(InboxItemKind, String, bool)> {
+async fn classify_prd(
+    input: &str,
+    prd_template: &str,
+) -> Option<(InboxItemKind, String, bool)> {
     let client = AnthropicClient::from_env().ok()?;
-    let result = client.classify_and_generate_prd(input).await.ok()?;
+    let result = client
+        .classify_and_generate_prd_with_template(input, prd_template)
+        .await
+        .ok()?;
     Some((result.kind, result.prd_markdown, result.actionable))
 }
 
@@ -77,6 +85,17 @@ pub async fn create_inbox_item(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateInboxItemRequest>,
 ) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
+    let project = db::models::project::Project::find_by_id(
+        &deployment.db().pool,
+        payload.project_id,
+    )
+    .await?
+    .ok_or_else(|| ApiError::BadRequest("Project not found".to_string()))?;
+    let prd_template = project
+        .inbox_prd_template
+        .as_deref()
+        .filter(|template| !template.trim().is_empty())
+        .unwrap_or(DEFAULT_INBOX_PRD_TEMPLATE);
     let action_token = Uuid::new_v4().to_string();
     let source_item_id = Uuid::new_v4().to_string();
     let raw_payload_json = serde_json::json!({
@@ -86,7 +105,8 @@ pub async fn create_inbox_item(
     })
     .to_string();
 
-    let (kind, prd_markdown, _actionable) = classify_prd(&payload.body)
+    let (kind, prd_markdown, _actionable) =
+        classify_prd(&payload.body, prd_template)
         .await
         .map(|(kind, prd, actionable)| (kind, prd, actionable))
         .unwrap_or((InboxItemKind::Other, payload.body.clone(), true));

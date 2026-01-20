@@ -6,6 +6,31 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::time::{sleep, Duration};
 
+pub const DEFAULT_INBOX_PRD_TEMPLATE: &str = r#"## Problem Statement
+The problem that the user is facing, from the user's perspective.
+
+## Solution
+The solution to the problem, from the user's perspective.
+
+## User Stories
+A numbered list of user stories in the format:
+1. As an <actor>, I want a <feature>, so that <benefit>
+
+Include all relevant user stories that cover the feature comprehensively.
+
+## Implementation Decisions
+Key implementation considerations including:
+- Technical clarifications
+- Architectural decisions
+- Schema changes (if applicable)
+- API contracts (if applicable)
+- Specific interactions
+
+Do NOT include specific file paths or code snippets.
+
+## Further Notes
+Any additional context or considerations."#;
+
 #[derive(Debug, Error)]
 pub enum AnthropicError {
     #[error("Missing VK_ANTHROPIC_API_KEY")]
@@ -86,6 +111,15 @@ impl AnthropicClient {
         &self,
         input: &str,
     ) -> Result<AnthropicInboxResult, AnthropicError> {
+        self.classify_and_generate_prd_with_template(input, DEFAULT_INBOX_PRD_TEMPLATE)
+            .await
+    }
+
+    pub async fn classify_and_generate_prd_with_template(
+        &self,
+        input: &str,
+        prd_template: &str,
+    ) -> Result<AnthropicInboxResult, AnthropicError> {
         let prompt = format!(
             r#"You are an assistant that triages incoming product feedback and generates detailed PRDs for coding agents.
 
@@ -98,30 +132,7 @@ Rules:
 - title should be concise and human-friendly.
 - prd_markdown should be a detailed PRD following this template:
 
-## Problem Statement
-The problem that the user is facing, from the user's perspective.
-
-## Solution
-The solution to the problem, from the user's perspective.
-
-## User Stories
-A numbered list of user stories in the format:
-1. As an <actor>, I want a <feature>, so that <benefit>
-
-Include all relevant user stories that cover the feature comprehensively.
-
-## Implementation Decisions
-Key implementation considerations including:
-- Technical clarifications
-- Architectural decisions
-- Schema changes (if applicable)
-- API contracts (if applicable)
-- Specific interactions
-
-Do NOT include specific file paths or code snippets.
-
-## Further Notes
-Any additional context or considerations.
+{}
 
 Guidelines for the PRD:
 - Be thorough and specific
@@ -131,6 +142,7 @@ Guidelines for the PRD:
 
 Input:
 {}"#,
+            prd_template,
             input
         );
 
