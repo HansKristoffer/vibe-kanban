@@ -333,6 +333,13 @@ if [ "$SKIP_DEPS" = false ]; then
     run_as_user pnpm run generate-types
     echo -e "${GREEN}Types generated successfully.${NC}"
 
+    # Always rebuild to ensure binary matches current code
+    echo ""
+    echo -e "${YELLOW}Building project...${NC}"
+    cd "$SCRIPT_DIR"
+    ./local-build.sh
+    echo -e "${GREEN}Build completed successfully.${NC}"
+
     echo ""
     echo -e "${GREEN}All dependencies are ready!${NC}"
     echo ""
