@@ -59,7 +59,7 @@ for arg in "$@"; do
             shift
             ;;
         --help|-h)
-            echo "Usage: sudo -E ./install-macos-service.sh [OPTIONS]"
+            echo "Usage: sudo ./install-macos-service.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --force     Force reinstall (recreates plist even if service exists)"
@@ -67,7 +67,9 @@ for arg in "$@"; do
             echo "  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)"
             echo "  --help      Show this help message"
             echo ""
-            echo "Required environment variables:"
+            echo "The script automatically reads from .env in the project directory."
+            echo ""
+            echo "Required environment variables (in .env or set inline):"
             echo "  VK_PUBLIC_BASE_URL      Public URL where the service is accessible"
             echo "  VK_ANTHROPIC_API_KEY    Anthropic API key for AI features"
             echo "  GOOGLE_CLIENT_ID        Google OAuth client ID"
@@ -79,7 +81,8 @@ for arg in "$@"; do
             echo "  TAILSCALE_FUNNEL  If set (1/true/yes), enable Tailscale Funnel setup (public URL)"
             echo ""
             echo "Example:"
-            echo "  source .env && sudo -E ./install-macos-service.sh"
+            echo "  sudo ./install-macos-service.sh"
+            echo "  PORT=8080 sudo ./install-macos-service.sh --force"
             exit 0
             ;;
     esac
@@ -110,6 +113,31 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load .env file if it exists (handles sudo not preserving environment)
+ENV_FILE="${SCRIPT_DIR:-.}/.env"
+if [ -f "$ENV_FILE" ]; then
+    echo -e "${CYAN}Loading environment from .env file...${NC}"
+    # Read .env file and export variables (handles both KEY=value and export KEY=value formats)
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Remove 'export ' prefix if present
+        line="${line#export }"
+        # Only process lines with = sign
+        if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            # Extract variable name
+            var_name="${line%%=*}"
+            # Only set if not already set in environment (allows overrides)
+            if [ -z "${!var_name:-}" ]; then
+                export "$line"
+            fi
+        fi
+    done < "$ENV_FILE"
+fi
+
 # Required environment variables
 REQUIRED_VARS=(
     "VK_PUBLIC_BASE_URL"
@@ -132,15 +160,14 @@ if [ ${#MISSING_VARS[@]} -gt 0 ]; then
         echo -e "  - ${YELLOW}${var}${NC}"
     done
     echo ""
-    echo "Set them before running this script:"
+    echo "Create a .env file in the project directory with these variables,"
+    echo "or set them before running this script:"
+    echo ""
     echo -e "  ${CYAN}VK_PUBLIC_BASE_URL=https://example.com \\\\${NC}"
     echo -e "  ${CYAN}VK_ANTHROPIC_API_KEY=sk-ant-... \\\\${NC}"
     echo -e "  ${CYAN}GOOGLE_CLIENT_ID=... \\\\${NC}"
     echo -e "  ${CYAN}GOOGLE_CLIENT_SECRET=... \\\\${NC}"
-    echo -e "  ${CYAN}sudo -E ./install-macos-service.sh${NC}"
-    echo ""
-    echo "Or source your .env file first:"
-    echo -e "  ${CYAN}source .env && sudo -E ./install-macos-service.sh${NC}"
+    echo -e "  ${CYAN}sudo ./install-macos-service.sh${NC}"
     exit 1
 fi
 
@@ -185,8 +212,7 @@ PLATFORM="${OS}-${ARCH}"
 BINARY_DIR="npx-cli/dist/${PLATFORM}"
 
 # Get version info
-cd "$(dirname "$0")"
-SCRIPT_DIR="$(pwd)"
+cd "$SCRIPT_DIR"
 VERSION=""
 if [ -f "package.json" ]; then
     VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
