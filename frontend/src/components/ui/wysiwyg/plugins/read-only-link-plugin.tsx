@@ -46,7 +46,7 @@ export function ReadOnlyLinkPlugin() {
     // Register a mutation listener to modify link DOM elements
     const unregister = editor.registerMutationListener(
       LinkNode,
-      (mutations) => {
+      (mutations: Map<string, 'created' | 'destroyed' | 'updated'>) => {
         for (const [nodeKey, mutation] of mutations) {
           if (mutation === 'destroyed') continue;
 
@@ -70,7 +70,7 @@ export function ReadOnlyLinkPlugin() {
             // External HTTPS link - add security attributes
             dom.setAttribute('target', '_blank');
             dom.setAttribute('rel', 'noopener noreferrer');
-            dom.onclick = (e) => e.stopPropagation();
+            dom.onclick = (e: MouseEvent) => e.stopPropagation();
           } else {
             // Internal/relative link - disable clicking
             dom.removeAttribute('href');
@@ -90,7 +90,7 @@ export function ReadOnlyLinkPlugin() {
       if (!root) return;
 
       const links = root.querySelectorAll('a');
-      links.forEach((link) => {
+      links.forEach((link: HTMLAnchorElement) => {
         const href = link.getAttribute('href');
         const safeHref = sanitizeHref(href ?? undefined);
 
@@ -106,7 +106,7 @@ export function ReadOnlyLinkPlugin() {
         if (isExternal) {
           link.setAttribute('target', '_blank');
           link.setAttribute('rel', 'noopener noreferrer');
-          link.onclick = (e) => e.stopPropagation();
+          link.onclick = (e: MouseEvent) => e.stopPropagation();
         } else {
           link.removeAttribute('href');
           link.style.cursor = 'not-allowed';

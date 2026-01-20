@@ -104,7 +104,7 @@ export function ClickableCodePlugin({
       observer.disconnect();
       // Clean up click handlers
       const clickableElements = root.querySelectorAll('[data-clickable-code]');
-      clickableElements.forEach((el) => {
+      clickableElements.forEach((el: Element) => {
         (el as HTMLElement).style.cursor = '';
         el.classList.remove('clickable-code');
         delete (el as HTMLElement).dataset.clickableCode;

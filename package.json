@@ -43,5 +43,10 @@
     "node": ">=18",
     "pnpm": ">=8"
   },
-  "packageManager": "pnpm@10.13.1"
+  "packageManager": "pnpm@10.13.1",
+  "pnpm": {
+    "patchedDependencies": {
+      "@virtuoso.dev/message-list@1.13.3": "patches/@virtuoso.dev__message-list@1.13.3.patch"
+    }
+  }
 }

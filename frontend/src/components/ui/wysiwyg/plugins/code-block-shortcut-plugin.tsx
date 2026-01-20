@@ -23,7 +23,7 @@ export function CodeBlockShortcutPlugin() {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    return editor.registerUpdateListener(({ dirtyLeaves }) => {
+    return editor.registerUpdateListener(({ dirtyLeaves }: { dirtyLeaves: Set<string> }) => {
       // Only process if there are dirty leaves (actual changes)
       if (dirtyLeaves.size === 0) return;
 

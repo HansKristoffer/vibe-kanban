@@ -55,7 +55,7 @@ export function MarkdownSyncPlugin({
 
   // Handle editor changes (editor → external)
   useEffect(() => {
-    return editor.registerUpdateListener(({ editorState }) => {
+    return editor.registerUpdateListener(({ editorState }: { editorState: EditorState }) => {
       onEditorStateChange?.(editorState);
       if (!onChange) return;
 
