@@ -26,7 +26,6 @@ interface UserSystemState {
   analyticsUserId: string | null;
   loginStatus: LoginStatus | null;
   current_user: UserSystemInfo['current_user'] | null;
-  current_user: UserSystemInfo['current_user'] | null;
 }
 
 interface UserSystemContextType {

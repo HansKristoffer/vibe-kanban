@@ -159,8 +159,8 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
         const repos = getWorkspaceRepoInputs();
         const ralphConfig = ralphEnabled
           ? {
-              max_iterations: ralphMaxIterations,
-              max_failures: ralphMaxFailures,
+              max_iterations: BigInt(ralphMaxIterations),
+              max_failures: BigInt(ralphMaxFailures),
             }
           : undefined;
 

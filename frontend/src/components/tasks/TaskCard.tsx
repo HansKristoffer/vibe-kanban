@@ -114,10 +114,9 @@ export function TaskCard({
                 <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
               )}
               {task.has_queued_attempt && (
-                <Clock
-                  className="h-4 w-4 text-warning"
-                  title={t('waitingForSlot')}
-                />
+                <span title={t('waitingForSlot')}>
+                  <Clock className="h-4 w-4 text-warning" />
+                </span>
               )}
               {task.last_attempt_failed && (
                 <XCircle className="h-4 w-4 text-destructive" />

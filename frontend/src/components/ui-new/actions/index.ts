@@ -744,6 +744,7 @@ export const Actions = {
         task: {
           ...task,
           has_in_progress_attempt: false,
+          has_queued_attempt: false,
           last_attempt_failed: false,
           executor: '',
         },

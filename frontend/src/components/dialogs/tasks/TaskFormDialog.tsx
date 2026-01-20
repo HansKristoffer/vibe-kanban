@@ -211,10 +211,10 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
         }));
         const ralphConfig = value.ralphEnabled
           ? {
-              max_iterations: value.ralphMaxIterations,
-              max_failures: value.ralphMaxFailures,
+              max_iterations: BigInt(value.ralphMaxIterations),
+              max_failures: BigInt(value.ralphMaxFailures),
             }
-          : undefined;
+          : null;
         await createAndStart.mutateAsync(
           {
             task,
