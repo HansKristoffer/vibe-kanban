@@ -59,7 +59,7 @@ for arg in "$@"; do
             shift
             ;;
         --help|-h)
-            echo "Usage: sudo ./install-macos-service.sh [OPTIONS]"
+            echo "Usage: sudo -E ./install-macos-service.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --force     Force reinstall (recreates plist even if service exists)"
@@ -67,10 +67,19 @@ for arg in "$@"; do
             echo "  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)"
             echo "  --help      Show this help message"
             echo ""
-            echo "Environment variables:"
+            echo "Required environment variables:"
+            echo "  VK_PUBLIC_BASE_URL      Public URL where the service is accessible"
+            echo "  VK_ANTHROPIC_API_KEY    Anthropic API key for AI features"
+            echo "  GOOGLE_CLIENT_ID        Google OAuth client ID"
+            echo "  GOOGLE_CLIENT_SECRET    Google OAuth client secret"
+            echo ""
+            echo "Optional environment variables:"
             echo "  PORT        Server port (default: 3000)"
             echo "  HOST        Server host (default: 0.0.0.0; auto: 127.0.0.1 when enabling Funnel)"
             echo "  TAILSCALE_FUNNEL  If set (1/true/yes), enable Tailscale Funnel setup (public URL)"
+            echo ""
+            echo "Example:"
+            echo "  source .env && sudo -E ./install-macos-service.sh"
             exit 0
             ;;
     esac
@@ -98,6 +107,40 @@ HOST="${HOST:-$DEFAULT_HOST}"
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${RED}Error: This script must be run as root (use sudo)${NC}"
+    exit 1
+fi
+
+# Required environment variables
+REQUIRED_VARS=(
+    "VK_PUBLIC_BASE_URL"
+    "VK_ANTHROPIC_API_KEY"
+    "GOOGLE_CLIENT_ID"
+    "GOOGLE_CLIENT_SECRET"
+)
+
+# Check required environment variables
+MISSING_VARS=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var:-}" ]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+    echo -e "${RED}Error: Missing required environment variables:${NC}"
+    for var in "${MISSING_VARS[@]}"; do
+        echo -e "  - ${YELLOW}${var}${NC}"
+    done
+    echo ""
+    echo "Set them before running this script:"
+    echo -e "  ${CYAN}VK_PUBLIC_BASE_URL=https://example.com \\\\${NC}"
+    echo -e "  ${CYAN}VK_ANTHROPIC_API_KEY=sk-ant-... \\\\${NC}"
+    echo -e "  ${CYAN}GOOGLE_CLIENT_ID=... \\\\${NC}"
+    echo -e "  ${CYAN}GOOGLE_CLIENT_SECRET=... \\\\${NC}"
+    echo -e "  ${CYAN}sudo -E ./install-macos-service.sh${NC}"
+    echo ""
+    echo "Or source your .env file first:"
+    echo -e "  ${CYAN}source .env && sudo -E ./install-macos-service.sh${NC}"
     exit 1
 fi
 
@@ -286,6 +329,14 @@ if [ "$IS_UPDATE" = false ]; then
         <string>${PORT}</string>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>VK_PUBLIC_BASE_URL</key>
+        <string>${VK_PUBLIC_BASE_URL}</string>
+        <key>VK_ANTHROPIC_API_KEY</key>
+        <string>${VK_ANTHROPIC_API_KEY}</string>
+        <key>GOOGLE_CLIENT_ID</key>
+        <string>${GOOGLE_CLIENT_ID}</string>
+        <key>GOOGLE_CLIENT_SECRET</key>
+        <string>${GOOGLE_CLIENT_SECRET}</string>
     </dict>
     <key>UserName</key>
     <string>${USER}</string>

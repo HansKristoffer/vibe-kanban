@@ -15,8 +15,12 @@ pnpm i
 pnpm run generate-types
 ./local-build.sh
 
-# 3. Install & start service
-sudo ./install-macos-service.sh
+# 3. Configure environment variables
+cp .env.example .env
+# Edit .env with your values (required: VK_PUBLIC_BASE_URL, VK_ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+
+# 4. Install & start service
+source .env && sudo -E ./install-macos-service.sh
 ```
 
 Done! Access at **http://localhost:3000**
@@ -46,9 +50,21 @@ pnpm run generate-types     # Generate TypeScript types
 
 ### Install the Service
 
+First, set the required environment variables:
+
 ```bash
-sudo ./install-macos-service.sh
+# Option 1: Source your .env file
+source .env && sudo -E ./install-macos-service.sh
+
+# Option 2: Set inline
+VK_PUBLIC_BASE_URL=https://example.com \
+VK_ANTHROPIC_API_KEY=sk-ant-... \
+GOOGLE_CLIENT_ID=... \
+GOOGLE_CLIENT_SECRET=... \
+sudo -E ./install-macos-service.sh
 ```
+
+> **Note:** The `-E` flag preserves environment variables when using sudo.
 
 The script automatically:
 - Installs binary to `/usr/local/bin/vibe-kanban`
@@ -59,7 +75,7 @@ The script automatically:
 ### Custom Port
 
 ```bash
-PORT=8080 sudo ./install-macos-service.sh
+source .env && PORT=8080 sudo -E ./install-macos-service.sh
 ```
 
 ---
@@ -69,11 +85,13 @@ PORT=8080 sudo ./install-macos-service.sh
 Same script handles updates — just rebuild and run:
 
 ```bash
-git pull                              # Get latest code
-pnpm i                                # Update dependencies (if needed)
-./local-build.sh                      # Rebuild
-sudo ./install-macos-service.sh       # Update service
+git pull                                          # Get latest code
+pnpm i                                            # Update dependencies (if needed)
+./local-build.sh                                  # Rebuild
+source .env && sudo -E ./install-macos-service.sh # Update service
 ```
+
+> **Note:** When updating, the script preserves your existing service configuration unless you use `--force`.
 
 The script will:
 - Stop the running service
@@ -127,7 +145,7 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 
 Option 1: Set during install
 ```bash
-PORT=8080 HOST=0.0.0.0 sudo ./install-macos-service.sh --force
+source .env && PORT=8080 HOST=0.0.0.0 sudo -E ./install-macos-service.sh --force
 ```
 
 Option 2: Edit plist directly
@@ -139,6 +157,17 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 ```
 
 ### Environment Variables
+
+**Required:**
+
+| Variable | Description |
+|----------|-------------|
+| `VK_PUBLIC_BASE_URL` | Public URL where the service is accessible (e.g., `https://example.com`) |
+| `VK_ANTHROPIC_API_KEY` | Anthropic API key for AI features |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+
+**Optional:**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -184,7 +213,7 @@ cat /var/vibe-kanban/vibe-kanban.error.log
 lsof -i :3000
 
 # Reinstall with different port
-PORT=8080 sudo ./install-macos-service.sh --force
+source .env && PORT=8080 sudo -E ./install-macos-service.sh --force
 ```
 
 ### Permission issues
@@ -199,13 +228,19 @@ sudo chown -R $(whoami) ~/Library/Application\ Support/ai.bloop.vibe-kanban
 ## Script Options
 
 ```bash
-sudo ./install-macos-service.sh [OPTIONS]
+source .env && sudo -E ./install-macos-service.sh [OPTIONS]
 
 Options:
   --force     Force reinstall (recreates service config)
   --no-mcp    Skip MCP binary installation
   --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
   --help      Show help
+
+Required environment variables:
+  VK_PUBLIC_BASE_URL      Public URL where the service is accessible
+  VK_ANTHROPIC_API_KEY    Anthropic API key for AI features
+  GOOGLE_CLIENT_ID        Google OAuth client ID
+  GOOGLE_CLIENT_SECRET    Google OAuth client secret
 ```
 
 ---
@@ -217,7 +252,7 @@ Options:
 If you want a public HTTPS URL via Tailscale Funnel (recommended over binding directly to a public interface):
 
 ```bash
-HOST=127.0.0.1 PORT=3000 TAILSCALE_FUNNEL=1 sudo ./install-macos-service.sh --force
+source .env && HOST=127.0.0.1 PORT=3000 TAILSCALE_FUNNEL=1 sudo -E ./install-macos-service.sh --force
 ```
 
 Requirements:
