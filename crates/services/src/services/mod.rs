@@ -27,7 +27,6 @@ pub mod queued_message;
 pub mod remote_client;
 pub mod repo;
 pub mod repo_config;
-pub mod share;
 pub mod slack;
 pub mod workspace_manager;
 pub mod worktree_manager;

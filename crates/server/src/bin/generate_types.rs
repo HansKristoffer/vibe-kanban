@@ -12,10 +12,6 @@ fn generate_types_content() -> String {
 // If you are an AI, and you absolutely have to edit this file, please confirm with the user first.";
 
     let decls: Vec<String> = vec![
-        remote::routes::tasks::SharedTaskResponse::decl(),
-        remote::routes::tasks::AssigneesQuery::decl(),
-        remote::db::tasks::SharedTask::decl(),
-        remote::db::users::UserData::decl(),
         db::models::auth_user::AuthUser::decl(),
         db::models::auth_session::AuthSession::decl(),
         db::models::auth_oauth_state::AuthOAuthState::decl(),
@@ -59,6 +55,7 @@ fn generate_types_content() -> String {
         db::models::scratch::DraftWorkspaceData::decl(),
         db::models::scratch::DraftWorkspaceRepo::decl(),
         db::models::scratch::PreviewSettingsData::decl(),
+        db::models::scratch::WorkspaceNotesData::decl(),
         db::models::scratch::ScratchPayload::decl(),
         db::models::scratch::ScratchType::decl(),
         db::models::scratch::Scratch::decl(),
@@ -147,8 +144,6 @@ fn generate_types_content() -> String {
         server::routes::sessions::review::ReviewError::decl(),
         server::routes::task_attempts::OpenEditorRequest::decl(),
         server::routes::task_attempts::OpenEditorResponse::decl(),
-        server::routes::shared_tasks::AssignSharedTaskRequest::decl(),
-        server::routes::tasks::ShareTaskResponse::decl(),
         server::routes::tasks::CreateAndStartTaskRequest::decl(),
         server::routes::project_integrations::ProjectIntegrationsResponse::decl(),
         server::routes::project_integrations::UpdateProjectIntegrationsRequest::decl(),
@@ -207,7 +202,6 @@ fn generate_types_content() -> String {
         services::services::config::UiLanguage::decl(),
         services::services::config::ShowcaseState::decl(),
         services::services::git::GitBranch::decl(),
-        services::services::share::SharedTaskDetails::decl(),
         services::services::queued_message::QueuedMessage::decl(),
         services::services::queued_message::QueueStatus::decl(),
         services::services::git::ConflictOp::decl(),
@@ -426,15 +420,13 @@ fn main() {
             std::process::exit(1);
         }
     } else {
-        // Wipe existing shared
-        fs::remove_dir_all(shared_path).ok();
-
-        // Recreate folder
         fs::create_dir_all(shared_path).expect("cannot create shared");
 
-        // Write the file as before
+        fs::remove_file(&types_path).ok();
+        fs::remove_dir_all(&schemas_path).ok();
+
         fs::write(&types_path, generated_types).expect("unable to write types.ts");
-        println!("✅ TypeScript types generated in shared/");
+        println!("✅ TypeScript types generated in shared/types.ts");
 
         write_schemas(&schemas_path, schema_content).expect("unable to write schemas");
 

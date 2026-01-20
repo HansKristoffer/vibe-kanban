@@ -28,7 +28,7 @@ use db::{
         workspace_repo::WorkspaceRepo,
     },
 };
-use deployment::{DeploymentError, RemoteClientNotConfigured};
+use deployment::DeploymentError;
 #[cfg(feature = "qa-mode")]
 use executors::executors::qa_mock::QaMockExecutor;
 #[cfg(not(feature = "qa-mode"))]
@@ -61,7 +61,6 @@ use services::services::{
     notification::NotificationService,
     queued_message::QueuedMessageService,
     repo_config::collect_env_vars_for_repos,
-    share::SharePublisher,
     workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
 };
 use sqlx::SqlitePool;
@@ -88,7 +87,6 @@ pub struct LocalContainerService {
     analytics: Option<AnalyticsContext>,
     approvals: Approvals,
     queued_message_service: QueuedMessageService,
-    publisher: Result<SharePublisher, RemoteClientNotConfigured>,
     notification_service: NotificationService,
 }
 
@@ -103,7 +101,6 @@ impl LocalContainerService {
         analytics: Option<AnalyticsContext>,
         approvals: Approvals,
         queued_message_service: QueuedMessageService,
-        publisher: Result<SharePublisher, RemoteClientNotConfigured>,
     ) -> Self {
         let child_store = Arc::new(RwLock::new(HashMap::new()));
         let interrupt_senders = Arc::new(RwLock::new(HashMap::new()));
@@ -120,7 +117,6 @@ impl LocalContainerService {
             analytics,
             approvals,
             queued_message_service,
-            publisher,
             notification_service,
         };
 
@@ -542,7 +538,6 @@ impl LocalContainerService {
         let config = self.config.clone();
         let container = self.clone();
         let analytics = self.analytics.clone();
-        let publisher = self.publisher.clone();
 
         let mut process_exit_rx = self.spawn_os_exit_watcher(exec_id);
 
@@ -656,7 +651,7 @@ impl LocalContainerService {
                         );
 
                         // Manually finalize task since we're bypassing normal execution flow
-                        container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                        container.finalize_task(&ctx).await;
                     }
                 }
 
@@ -712,7 +707,7 @@ impl LocalContainerService {
                                         WorkspaceAutomationStatus::Completed,
                                     )
                                     .await;
-                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    container.finalize_task(&ctx).await;
                                     return;
                                 }
 
@@ -723,7 +718,7 @@ impl LocalContainerService {
                                         WorkspaceAutomationStatus::Stopped,
                                     )
                                     .await;
-                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    container.finalize_task(&ctx).await;
                                     return;
                                 }
 
@@ -734,7 +729,7 @@ impl LocalContainerService {
                                         WorkspaceAutomationStatus::Stopped,
                                     )
                                     .await;
-                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    container.finalize_task(&ctx).await;
                                     return;
                                 }
 
@@ -771,7 +766,7 @@ impl LocalContainerService {
                                         WorkspaceAutomationStatus::Stopped,
                                     )
                                     .await;
-                                    container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                    container.finalize_task(&ctx).await;
                                 }
                                 return;
                             }
@@ -815,7 +810,7 @@ impl LocalContainerService {
                             {
                                 tracing::error!("Failed to start queued follow-up: {}", e);
                                 // Fall back to finalization if follow-up fails
-                                container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                container.finalize_task(&ctx).await;
                             }
                         } else {
                             // Execution failed or was killed - discard the queued message and finalize
@@ -824,10 +819,10 @@ impl LocalContainerService {
                                 ctx.session.id,
                                 ctx.execution_process.status
                             );
-                            container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                            container.finalize_task(&ctx).await;
                         }
                     } else {
-                        container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                        container.finalize_task(&ctx).await;
                     }
                 }
 
@@ -1482,10 +1477,6 @@ impl ContainerService for LocalContainerService {
         &self.git
     }
 
-    fn share_publisher(&self) -> Option<&SharePublisher> {
-        self.publisher.as_ref().ok()
-    }
-
     fn notification_service(&self) -> &NotificationService {
         &self.notification_service
     }
@@ -1816,23 +1807,10 @@ impl ContainerService for LocalContainerService {
                 ctx.execution_process.run_reason,
                 ExecutionProcessRunReason::DevServer
             )
+            && let Err(e) =
+                Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await
         {
-            match Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await {
-                Ok(_) => {
-                    if let Some(publisher) = self.share_publisher()
-                        && let Err(err) = publisher.update_shared_task_by_id(ctx.task.id).await
-                    {
-                        tracing::warn!(
-                            ?err,
-                            "Failed to propagate shared task update for {}",
-                            ctx.task.id
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Failed to update task status to InReview: {e}");
-                }
-            }
+            tracing::error!("Failed to update task status to InReview: {e}");
         }
 
         tracing::debug!(

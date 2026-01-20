@@ -3,7 +3,6 @@ use axum::{
     middleware::from_fn_with_state,
     routing::{IntoMakeService, get},
 };
-
 use crate::{DeploymentImpl, middleware::require_authenticated_user};
 
 pub mod approvals;
@@ -26,7 +25,6 @@ pub mod inbox;
 pub mod repo;
 pub mod scratch;
 pub mod sessions;
-pub mod shared_tasks;
 pub mod tags;
 pub mod task_attempts;
 pub mod tasks;
@@ -48,7 +46,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(config::router())
         .merge(projects::router(&deployment))
         .merge(tasks::router(&deployment))
-        .merge(shared_tasks::router())
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
         .merge(tags::router(&deployment))

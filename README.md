@@ -114,8 +114,23 @@ The following environment variables can be configured at build time or runtime:
 | `GOOGLE_CLIENT_SECRET` | Runtime | Empty | Google OAuth client secret for SSO login |
 | `VK_PUBLIC_BASE_URL` | Runtime | Empty | Public base URL (e.g. `https://your-host`); used for OAuth redirect URI and secure cookies |
 | `DISABLE_WORKTREE_ORPHAN_CLEANUP` | Runtime | Not set | Disable git worktree cleanup (for debugging) |
+| `VK_ALLOWED_ORIGINS` | Runtime | Not set | Comma-separated list of origins that are allowed to make backend API requests (e.g., `https://my-vibekanban-frontend.com`) |
 
 **Build-time variables** must be set when running `pnpm run build`. **Runtime variables** are read when the application starts.
+
+#### Self-Hosting with a Reverse Proxy or Custom Domain
+
+When running Vibe Kanban behind a reverse proxy (e.g., nginx, Caddy, Traefik) or on a custom domain, you must set the `VK_ALLOWED_ORIGINS` environment variable. Without this, the browser's Origin header won't match the backend's expected host, and API requests will be rejected with a 403 Forbidden error.
+
+Set it to the full origin URL(s) where your frontend is accessible:
+
+```bash
+# Single origin
+VK_ALLOWED_ORIGINS=https://vk.example.com
+
+# Multiple origins (comma-separated)
+VK_ALLOWED_ORIGINS=https://vk.example.com,https://vk-staging.example.com
+```
 
 ### Remote Deployment
 

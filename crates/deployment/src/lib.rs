@@ -32,7 +32,6 @@ use services::services::{
     project::ProjectService,
     queued_message::QueuedMessageService,
     repo::RepoService,
-    share::SharePublisher,
     worktree_manager::WorktreeError,
 };
 use sqlx::Error as SqlxError;
@@ -112,8 +111,6 @@ pub trait Deployment: Clone + Send + Sync + 'static {
 
     fn auth_context(&self) -> &AuthContext;
 
-    fn share_publisher(&self) -> Result<SharePublisher, RemoteClientNotConfigured>;
-
     async fn update_sentry_scope(&self) -> Result<(), DeploymentError> {
         let user_id = self.user_id();
         let config = self.config().read().await;
@@ -133,8 +130,7 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                 user_id: self.user_id().to_string(),
                 analytics_service: analytics_service.clone(),
             });
-        let publisher = self.share_publisher().ok();
-        PrMonitorService::spawn(db, analytics, publisher).await
+        PrMonitorService::spawn(db, analytics).await
     }
 
     async fn spawn_inbox_poller_service(&self) -> tokio::task::JoinHandle<()> {

@@ -536,22 +536,6 @@ pub async fn merge_task_attempt(
         }
     }
 
-    // Try broadcast update to other users in organization
-    if let Ok(publisher) = deployment.share_publisher() {
-        if let Err(err) = publisher.update_shared_task_by_id(task.id).await {
-            tracing::warn!(
-                ?err,
-                "Failed to propagate shared task update for {}",
-                task.id
-            );
-        }
-    } else {
-        tracing::debug!(
-            "Share publisher unavailable; skipping remote update for {}",
-            task.id
-        );
-    }
-
     deployment
         .track_if_analytics_allowed(
             "task_attempt_merged",
@@ -1244,7 +1228,7 @@ pub async fn abort_conflicts_task_attempt(
 pub async fn start_dev_server(
     Extension(workspace): Extension<Workspace>,
     State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+) -> Result<ResponseJson<ApiResponse<Vec<ExecutionProcess>>>, ApiError> {
     let pool = &deployment.db().pool;
 
     // Get parent task
@@ -1320,6 +1304,7 @@ pub async fn start_dev_server(
         }
     };
 
+    let mut execution_processes = Vec::new();
     for repo in repos_with_dev_script {
         let executor_action = ExecutorAction::new(
             ExecutorActionType::ScriptRequest(ScriptRequest {
@@ -1331,7 +1316,7 @@ pub async fn start_dev_server(
             None,
         );
 
-        deployment
+        let execution_process = deployment
             .container()
             .start_execution(
                 &workspace,
@@ -1340,6 +1325,7 @@ pub async fn start_dev_server(
                 &ExecutionProcessRunReason::DevServer,
             )
             .await?;
+        execution_processes.push(execution_process);
     }
 
     deployment
@@ -1353,7 +1339,7 @@ pub async fn start_dev_server(
         )
         .await;
 
-    Ok(ResponseJson(ApiResponse::success(())))
+    Ok(ResponseJson(ApiResponse::success(execution_processes)))
 }
 
 pub async fn get_task_attempt_children(
