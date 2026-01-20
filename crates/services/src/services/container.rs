@@ -1145,6 +1145,20 @@ pub trait ContainerService {
                 merge_commit: None,
             });
         }
+        let initial_status = if matches!(run_reason, ExecutionProcessRunReason::CodingAgent) {
+            let running_count =
+                ExecutionProcess::count_running_coding_agents(&self.db().pool).await?;
+            let has_queued = ExecutionProcess::has_queued_coding_agents(&self.db().pool).await?;
+            if running_count >= 10 || has_queued {
+                ExecutionProcessStatus::Queued
+            } else {
+                ExecutionProcessStatus::Running
+            }
+        } else {
+            ExecutionProcessStatus::Running
+        };
+
+        let is_queued = matches!(initial_status, ExecutionProcessStatus::Queued);
         let create_execution_process = CreateExecutionProcess {
             session_id: session.id,
             executor_action: executor_action.clone(),
@@ -1156,6 +1170,7 @@ pub trait ContainerService {
             &create_execution_process,
             Uuid::new_v4(),
             &repo_states,
+            initial_status,
         )
         .await?;
 
@@ -1186,6 +1201,15 @@ pub trait ContainerService {
                 coding_agent_turn_id,
             )
             .await?;
+        }
+
+        if is_queued {
+            tracing::info!(
+                "Queued execution process {} for workspace {} (capacity reached)",
+                execution_process.id,
+                workspace.id
+            );
+            return Ok(execution_process);
         }
 
         if let Err(start_error) = self

@@ -43,6 +43,7 @@ pub enum ExecutionProcessError {
 #[serde(rename_all = "lowercase")]
 #[ts(use_ts_enum)]
 pub enum ExecutionProcessStatus {
+    Queued,
     Running,
     Completed,
     Failed,
@@ -282,6 +283,96 @@ impl ExecutionProcess {
         .await
     }
 
+    /// Count running CodingAgent processes (global)
+    pub async fn count_running_coding_agents(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64"
+               FROM execution_processes
+               WHERE status = 'running'
+                 AND run_reason = 'codingagent'
+                 AND dropped = FALSE"#
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Check if any CodingAgent processes are queued (global)
+    pub async fn has_queued_coding_agents(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+        let exists: bool = sqlx::query_scalar!(
+            r#"SELECT EXISTS(
+                   SELECT 1
+                   FROM execution_processes
+                   WHERE status = 'queued'
+                     AND run_reason = 'codingagent'
+                     AND dropped = FALSE
+                 ) as "exists!: bool""#
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(exists)
+    }
+
+    /// Find queued CodingAgent processes (FIFO), excluding workspaces with running non-devserver work
+    pub async fn find_queued_coding_agents(
+        pool: &SqlitePool,
+        limit: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            ExecutionProcess,
+            r#"SELECT
+                    ep.id as "id!: Uuid",
+                    ep.session_id as "session_id!: Uuid",
+                    ep.run_reason as "run_reason!: ExecutionProcessRunReason",
+                    ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
+                    ep.status as "status!: ExecutionProcessStatus",
+                    ep.exit_code,
+                    ep.dropped as "dropped!: bool",
+                    ep.started_at as "started_at!: DateTime<Utc>",
+                    ep.completed_at as "completed_at?: DateTime<Utc>",
+                    ep.created_at as "created_at!: DateTime<Utc>",
+                    ep.updated_at as "updated_at!: DateTime<Utc>"
+               FROM execution_processes ep
+               JOIN sessions s ON ep.session_id = s.id
+               WHERE ep.status = 'queued'
+                 AND ep.run_reason = 'codingagent'
+                 AND ep.dropped = FALSE
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM execution_processes ep2
+                     JOIN sessions s2 ON ep2.session_id = s2.id
+                     WHERE s2.workspace_id = s.workspace_id
+                       AND ep2.status = 'running'
+                       AND ep2.run_reason != 'devserver'
+                 )
+               ORDER BY ep.created_at ASC
+               LIMIT $1"#,
+            limit
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Mark a queued process as running (claim) and reset started_at
+    pub async fn mark_running_if_queued(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"UPDATE execution_processes
+               SET status = 'running',
+                   started_at = datetime('now', 'subsec'),
+                   completed_at = NULL,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $1
+                 AND status = 'queued'"#,
+            id
+        )
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Find running dev servers for a specific project
     pub async fn find_running_dev_servers_by_project(
         pool: &SqlitePool,
@@ -458,6 +549,7 @@ impl ExecutionProcess {
         data: &CreateExecutionProcess,
         process_id: Uuid,
         repo_states: &[CreateExecutionProcessRepoState],
+        initial_status: ExecutionProcessStatus,
     ) -> Result<Self, sqlx::Error> {
         let now = Utc::now();
         let executor_action_json = sqlx::types::Json(&data.executor_action);
@@ -471,7 +563,7 @@ impl ExecutionProcess {
             data.session_id,
             data.run_reason,
             executor_action_json,
-            ExecutionProcessStatus::Running,
+            initial_status,
             None::<i64>,
             now,
             None::<DateTime<Utc>>,

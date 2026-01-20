@@ -469,6 +469,7 @@
     "editTask": "Edit task"
   },
   "navigateToParent": "상위 작업 시도로 이동",
+  "waitingForSlot": "Waiting for available agent slot",
   "taskPanel": {
     "attemptsCount": "Attempts ({{count}})",
     "errorLoadingAttempts": "Failed to load attempts",

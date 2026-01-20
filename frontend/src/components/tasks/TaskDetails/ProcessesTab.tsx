@@ -66,6 +66,8 @@ function ProcessesTab({ sessionId }: ProcessesTabProps) {
 
   const getStatusIcon = (status: ExecutionProcessStatus) => {
     switch (status) {
+      case 'queued':
+        return <Clock className="h-4 w-4 text-warning" />;
       case 'running':
         return <Play className="h-4 w-4 text-blue-500" />;
       case 'completed':
@@ -81,6 +83,8 @@ function ProcessesTab({ sessionId }: ProcessesTabProps) {
 
   const getStatusColor = (status: ExecutionProcessStatus) => {
     switch (status) {
+      case 'queued':
+        return 'bg-warning/10 border-warning/40 text-warning-foreground';
       case 'running':
         return 'bg-blue-50 border-blue-200 text-blue-800';
       case 'completed':

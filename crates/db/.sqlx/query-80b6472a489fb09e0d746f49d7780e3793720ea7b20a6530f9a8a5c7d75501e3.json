@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(\n                   SELECT 1\n                   FROM execution_processes\n                   WHERE status = 'queued'\n                     AND run_reason = 'codingagent'\n                     AND dropped = FALSE\n                 ) as \"exists!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists!: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "80b6472a489fb09e0d746f49d7780e3793720ea7b20a6530f9a8a5c7d75501e3"
+}

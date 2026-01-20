@@ -190,6 +190,7 @@
     "closePanel": "Fermer le panneau"
   },
   "navigateToParent": "Naviguer vers la tentative de tâche parente",
+  "waitingForSlot": "Waiting for available agent slot",
   "toolbar": {
     "actions": "Actions",
     "noAttempts": "Aucune tentative pour le moment",

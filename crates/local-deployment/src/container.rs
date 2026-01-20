@@ -29,6 +29,10 @@ use db::{
     },
 };
 use deployment::{DeploymentError, RemoteClientNotConfigured};
+#[cfg(feature = "qa-mode")]
+use executors::executors::qa_mock::QaMockExecutor;
+#[cfg(not(feature = "qa-mode"))]
+use executors::profile::ExecutorConfigs;
 use executors::{
     actions::{
         Executable, ExecutorAction, ExecutorActionType,
@@ -37,7 +41,10 @@ use executors::{
     },
     approvals::{ExecutorApprovalService, NoopExecutorApprovalService},
     env::{ExecutionEnv, RepoContext},
-    executors::{BaseCodingAgent, ExecutorExitResult, ExecutorExitSignal, InterruptSender},
+    executors::{
+        BaseCodingAgent, ExecutorExitResult, ExecutorExitSignal, InterruptSender,
+        StandardCodingAgentExecutor,
+    },
     logs::{NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch},
     profile::ExecutorProfileId,
 };
@@ -118,6 +125,7 @@ impl LocalContainerService {
         };
 
         container.spawn_workspace_cleanup();
+        container.spawn_queued_execution_drainer();
 
         container
     }
@@ -215,6 +223,153 @@ impl LocalContainerService {
                 });
             }
         });
+    }
+
+    pub fn spawn_queued_execution_drainer(&self) {
+        let container = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                if let Err(err) = container.drain_queued_coding_agents().await {
+                    tracing::error!("Failed to drain queued coding agents: {}", err);
+                }
+            }
+        });
+    }
+
+    async fn drain_queued_coding_agents(&self) -> Result<(), ContainerError> {
+        let running_count = ExecutionProcess::count_running_coding_agents(&self.db.pool).await?;
+        let available = 10_i64.saturating_sub(running_count);
+        if available <= 0 {
+            return Ok(());
+        }
+
+        let queued =
+            ExecutionProcess::find_queued_coding_agents(&self.db.pool, available).await?;
+
+        for process in queued {
+            let claimed =
+                ExecutionProcess::mark_running_if_queued(&self.db.pool, process.id).await?;
+            if !claimed {
+                continue;
+            }
+
+            let ctx = match ExecutionProcess::load_context(&self.db.pool, process.id).await {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load execution context for queued process {}: {}",
+                        process.id,
+                        e
+                    );
+                    let _ = ExecutionProcess::update_completion(
+                        &self.db.pool,
+                        process.id,
+                        ExecutionProcessStatus::Failed,
+                        None,
+                    )
+                    .await;
+                    continue;
+                }
+            };
+
+            if let Err(e) = self.ensure_container_exists(&ctx.workspace).await {
+                tracing::error!(
+                    "Failed to ensure container for queued process {}: {}",
+                    process.id,
+                    e
+                );
+                let _ = ExecutionProcess::update_completion(
+                    &self.db.pool,
+                    process.id,
+                    ExecutionProcessStatus::Failed,
+                    None,
+                )
+                .await;
+                continue;
+            }
+
+            let executor_action = match ctx.execution_process.executor_action() {
+                Ok(action) => action,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to parse executor action for queued process {}: {}",
+                        process.id,
+                        e
+                    );
+                    let _ = ExecutionProcess::update_completion(
+                        &self.db.pool,
+                        process.id,
+                        ExecutionProcessStatus::Failed,
+                        None,
+                    )
+                    .await;
+                    continue;
+                }
+            };
+
+            if let Err(e) = self
+                .start_execution_inner(&ctx.workspace, &ctx.execution_process, executor_action)
+                .await
+            {
+                tracing::error!(
+                    "Failed to start queued execution process {}: {}",
+                    process.id,
+                    e
+                );
+                let _ = ExecutionProcess::update_completion(
+                    &self.db.pool,
+                    process.id,
+                    ExecutionProcessStatus::Failed,
+                    None,
+                )
+                .await;
+                continue;
+            }
+
+            let workspace_root = self.workspace_to_current_dir(&ctx.workspace);
+            if let Some(msg_store) = self.get_msg_store_by_id(&ctx.execution_process.id).await
+                && let Some((executor_profile_id, working_dir)) = match executor_action.typ() {
+                    ExecutorActionType::CodingAgentInitialRequest(request) => Some((
+                        &request.executor_profile_id,
+                        request.effective_dir(&workspace_root),
+                    )),
+                    ExecutorActionType::CodingAgentFollowUpRequest(request) => Some((
+                        &request.executor_profile_id,
+                        request.effective_dir(&workspace_root),
+                    )),
+                    ExecutorActionType::ReviewRequest(request) => Some((
+                        &request.executor_profile_id,
+                        request.effective_dir(&workspace_root),
+                    )),
+                    _ => None,
+                }
+            {
+                #[cfg(feature = "qa-mode")]
+                {
+                    let executor = QaMockExecutor;
+                    executor.normalize_logs(msg_store, &working_dir);
+                }
+                #[cfg(not(feature = "qa-mode"))]
+                {
+                    if let Some(executor) =
+                        ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
+                    {
+                        executor.normalize_logs(msg_store, &working_dir);
+                    } else {
+                        tracing::error!(
+                            "Failed to resolve profile '{:?}' for normalization",
+                            executor_profile_id
+                        );
+                    }
+                }
+            }
+
+            self.spawn_stream_raw_logs_to_db(&ctx.execution_process.id);
+        }
+
+        Ok(())
     }
 
     /// Record the current HEAD commit for each repository as the "after" state.
@@ -698,6 +853,10 @@ impl LocalContainerService {
             // Now that commit/next-action/finalization steps for this process are complete,
             // capture the HEAD OID as the definitive "after" state (best-effort).
             container.update_after_head_commits(exec_id).await;
+
+            if let Err(err) = container.drain_queued_coding_agents().await {
+                tracing::error!("Failed to drain queued coding agents after completion: {}", err);
+            }
 
             // Cleanup msg store
             if let Some(msg_arc) = msg_stores.write().await.remove(&exec_id) {

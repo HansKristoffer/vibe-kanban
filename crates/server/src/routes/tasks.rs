@@ -13,6 +13,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use db::models::{
+    execution_process::ExecutionProcessStatus,
     image::TaskImage,
     inbox_item::InboxItem,
     merge::Merge,
@@ -248,12 +249,18 @@ pub async fn create_task_and_start(
         .await?;
     }
 
-    let is_attempt_running = deployment
+    let start_result = deployment
         .container()
         .start_workspace(&workspace, payload.executor_profile_id.clone())
         .await
-        .inspect_err(|err| tracing::error!("Failed to start task attempt: {}", err))
-        .is_ok();
+        .inspect_err(|err| tracing::error!("Failed to start task attempt: {}", err));
+    let (has_in_progress_attempt, has_queued_attempt) = match start_result {
+        Ok(process) => (
+            process.status == ExecutionProcessStatus::Running,
+            process.status == ExecutionProcessStatus::Queued,
+        ),
+        Err(_) => (false, false),
+    };
     deployment
         .track_if_analytics_allowed(
             "task_attempt_started",
@@ -281,8 +288,9 @@ pub async fn create_task_and_start(
     tracing::info!("Started attempt for task {}", task.id);
     Ok(ResponseJson(ApiResponse::success(TaskWithAttemptStatus {
         task,
-        has_in_progress_attempt: is_attempt_running,
+        has_in_progress_attempt,
         last_attempt_failed: false,
+        has_queued_attempt,
         executor: payload.executor_profile_id.executor.to_string(),
     })))
 }

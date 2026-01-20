@@ -37,6 +37,7 @@ const RUN_REASON_ICONS: Record<ExecutionProcessRunReason, typeof TerminalIcon> =
   };
 
 const STATUS_COLORS: Record<ExecutionProcessStatus, string> = {
+  queued: 'bg-warning',
   running: 'bg-info',
   completed: 'bg-success',
   failed: 'bg-destructive',

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE execution_processes\n               SET status = 'running',\n                   started_at = datetime('now', 'subsec'),\n                   completed_at = NULL,\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1\n                 AND status = 'queued'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "80a0b61f7707c0f49f72a45aa795729aaf387bd04be66b662c035ebda0590cb6"
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
-import { Link, Loader2, XCircle } from 'lucide-react';
+import { Clock, Link, Loader2, XCircle } from 'lucide-react';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import { ActionsDropdown } from '@/components/ui/actions-dropdown';
 import { Button } from '@/components/ui/button';
@@ -112,6 +112,12 @@ export function TaskCard({
             <>
               {task.has_in_progress_attempt && (
                 <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+              )}
+              {task.has_queued_attempt && (
+                <Clock
+                  className="h-4 w-4 text-warning"
+                  title={t('waitingForSlot')}
+                />
               )}
               {task.last_attempt_failed && (
                 <XCircle className="h-4 w-4 text-destructive" />

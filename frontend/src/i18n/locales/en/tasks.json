@@ -190,6 +190,7 @@
     "closePanel": "Close panel"
   },
   "navigateToParent": "Navigate to parent task attempt",
+  "waitingForSlot": "Waiting for available agent slot",
   "toolbar": {
     "actions": "Actions",
     "noAttempts": "No attempts yet",
