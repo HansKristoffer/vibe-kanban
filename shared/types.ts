@@ -380,7 +380,7 @@ export type LinearWorkflowState = { id: string, name: string, type: string, };
 
 export type LinearStatesQuery = { team_id: string, };
 
-export type WebhookUrls = { linear: string, intercom: string, modjo: string, manual: string, posthog: string, sentry: string, slack_commands: string, slack_interactivity: string, };
+export type WebhookUrls = { linear: string, intercom: string, modjo: string, manual: string, personal_ai: string, posthog: string, sentry: string, slack_commands: string, slack_interactivity: string, };
 
 export type EnvVarEntry = { 
 /**

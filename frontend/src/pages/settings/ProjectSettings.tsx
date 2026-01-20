@@ -129,6 +129,10 @@ export function ProjectSettings() {
   const [sentryEnabled, setSentryEnabled] = useState(false);
   const [slackEnabled, setSlackEnabled] = useState(false);
 
+  // Webhook example toggle states
+  const [showManualExample, setShowManualExample] = useState(false);
+  const [showPersonalAiExample, setShowPersonalAiExample] = useState(false);
+
   // Environment variables state
   const [envVars, setEnvVars] = useState<EnvVarEntry[]>([]);
   const [envVarsLoading, setEnvVarsLoading] = useState(false);
@@ -154,6 +158,7 @@ export function ProjectSettings() {
       intercom: `${base}/api/webhooks/intercom/${token}`,
       modjo: `${base}/api/webhooks/modjo/${token}`,
       manual: `${base}/api/webhooks/manual/${token}`,
+      personal_ai: `${base}/api/webhooks/personal-ai/${token}`,
       posthog: `${base}/api/webhooks/posthog/${token}`,
       sentry: `${base}/api/webhooks/sentry/${token}`,
       slack_commands: `${base}/api/webhooks/slack/commands`,
@@ -1501,9 +1506,110 @@ export function ProjectSettings() {
                       <p className="text-sm text-muted-foreground">
                         Use this URL to create inbox items programmatically from external sources.
                       </p>
-                      <div className="text-sm text-muted-foreground break-all">
+                      <div className="text-sm text-muted-foreground break-all font-mono bg-muted px-2 py-1 rounded">
                         {webhookUrls.manual}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowManualExample(!showManualExample)}
+                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${showManualExample ? 'rotate-180' : ''}`}
+                        />
+                        {showManualExample ? 'Hide' : 'Show'} example
+                      </button>
+                      {showManualExample && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Example Request:</div>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`curl -X POST "${webhookUrls.manual}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "source_item_id": "unique-id-123",
+    "title": "Add dark mode toggle",
+    "body": "Add a toggle in settings to switch between light and dark themes",
+    "source_url": "https://example.com/issue/123",
+    "kind": "Feature"
+  }'`}</pre>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Example Response:</div>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "Add dark mode toggle",
+    "kind": "Feature",
+    "status": "Pending"
+  }
+}`}</pre>
+                          </div>
+                        </div>
+                      )}
+                      {!integrations.webhook_urls && (
+                        <p className="text-xs text-muted-foreground">
+                          Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the server to show public URLs.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Personal AI Quick Task Webhook */}
+                  {webhookUrls && (
+                    <div className="border rounded-lg p-4 space-y-2">
+                      <div className="font-medium">Personal AI Quick Task</div>
+                      <p className="text-sm text-muted-foreground">
+                        Create a task, auto-accept it, and immediately start Claude Code. Ideal for quick ideas from your personal AI.
+                      </p>
+                      <div className="text-sm text-muted-foreground break-all font-mono bg-muted px-2 py-1 rounded">
+                        {webhookUrls.personal_ai}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPersonalAiExample(!showPersonalAiExample)}
+                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${showPersonalAiExample ? 'rotate-180' : ''}`}
+                        />
+                        {showPersonalAiExample ? 'Hide' : 'Show'} example
+                      </button>
+                      {showPersonalAiExample && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Example Request:</div>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`curl -X POST "${webhookUrls.personal_ai}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "text": "Add a dark mode toggle to the settings page. Should persist the preference in localStorage.",
+    "title": "Add dark mode toggle",
+    "base_branch": "main",
+    "slack_user_id": "U1234567890"
+  }'`}</pre>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Example Response:</div>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`{
+  "success": true,
+  "data": {
+    "inbox_item_id": "550e8400-e29b-41d4-a716-446655440000",
+    "task_id": "550e8400-e29b-41d4-a716-446655440001",
+    "workspace_id": "550e8400-e29b-41d4-a716-446655440002",
+    "execution_process_id": "550e8400-e29b-41d4-a716-446655440003",
+    "slack_posted": true,
+    "slack_channel_id": "C1234567890",
+    "slack_message_ts": "1234567890.123456",
+    "started": true,
+    "start_error": null
+  }
+}`}</pre>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <strong>Note:</strong> Provide <code className="bg-muted px-1 rounded">slack_user_id</code> to get tagged in Slack notifications when the agent needs attention.
+                          </div>
+                        </div>
+                      )}
                       {!integrations.webhook_urls && (
                         <p className="text-xs text-muted-foreground">
                           Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the server to show public URLs.
