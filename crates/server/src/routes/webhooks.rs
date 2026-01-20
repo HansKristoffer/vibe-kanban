@@ -44,6 +44,38 @@ struct ManualWebhookPayload {
     force_pending: Option<bool>,
 }
 
+/// Request payload for the personal-ai quick endpoint.
+/// This endpoint creates a PRD, posts to Slack, auto-accepts, and starts Claude Code immediately.
+#[derive(Debug, Deserialize)]
+pub struct PersonalAiPayload {
+    /// The idea/description from your personal AI
+    text: String,
+    /// Override the title (otherwise derived from LLM output)
+    title: Option<String>,
+    /// Idempotency key (fallback: random UUID)
+    source_item_id: Option<String>,
+    /// Context link
+    source_url: Option<String>,
+    /// Base branch for workspace repos (default: "main")
+    base_branch: Option<String>,
+    /// Slack user ID to mention/tag and store for notifications
+    slack_user_id: Option<String>,
+}
+
+/// Response for the personal-ai quick endpoint.
+#[derive(Debug, Serialize)]
+pub struct PersonalAiResponse {
+    inbox_item_id: Uuid,
+    task_id: Uuid,
+    workspace_id: Option<Uuid>,
+    execution_process_id: Option<Uuid>,
+    slack_posted: bool,
+    slack_channel_id: Option<String>,
+    slack_message_ts: Option<String>,
+    started: bool,
+    start_error: Option<String>,
+}
+
 fn verify_hmac_sha256(secret: &str, signature_header: &str, payload: &[u8]) -> bool {
     let signature = signature_header
         .strip_prefix("sha256=")
@@ -1561,6 +1593,308 @@ fn build_update_modal_view_json(inbox_item_id: &str, current_title: &str, curren
     })
 }
 
+// === Personal AI Quick Endpoint ===
+
+/// Handle the personal-ai quick endpoint.
+/// Creates a PRD, posts to Slack, auto-accepts, and starts Claude Code immediately.
+pub async fn personal_ai_quick(
+    State(deployment): State<DeploymentImpl>,
+    Path(webhook_token): Path<String>,
+    Json(payload): Json<PersonalAiPayload>,
+) -> Result<Json<ApiResponse<PersonalAiResponse>>, ApiError> {
+    use db::models::inbox_item::UpdateInboxItem;
+    use db::models::project_repo::ProjectRepo;
+    use db::models::task::{CreateTask, Task};
+    use db::models::workspace::{CreateWorkspace, Workspace};
+    use db::models::workspace_repo::CreateWorkspaceRepo;
+    use executors::executors::BaseCodingAgent;
+    use executors::profile::ExecutorProfileId;
+    use services::services::inbox_integrations::linear_create_issue;
+
+    let pool = &deployment.db().pool;
+
+    // 1. Load project integrations using webhook token
+    let integrations = load_project_integrations(&deployment, &webhook_token).await?;
+    let project = load_project(&deployment, integrations.project_id).await?;
+    let prd_template = effective_prd_template(&project);
+
+    // 2. Generate PRD using Anthropic (with fallback to raw text)
+    let classification = classify_payload(&payload.text, prd_template).await;
+    let (title, kind, prd_markdown): (String, InboxItemKind, String) = match classification {
+        Some(result) => (
+            payload.title.clone().unwrap_or_else(|| {
+                if result.title.is_empty() {
+                    "Quick task from Personal AI".to_string()
+                } else {
+                    result.title
+                }
+            }),
+            result.kind,
+            result.prd_markdown,
+        ),
+        None => (
+            payload.title.clone().unwrap_or_else(|| "Quick task from Personal AI".to_string()),
+            InboxItemKind::Feature,
+            payload.text.clone(),
+        ),
+    };
+
+    // 3. Create inbox item
+    let inbox_item_id = Uuid::new_v4();
+    let action_token = Uuid::new_v4().to_string();
+    let source_item_id = payload.source_item_id.clone().unwrap_or_else(|| inbox_item_id.to_string());
+    let raw_payload_json = serde_json::json!({
+        "text": payload.text,
+        "title": payload.title,
+        "source_url": payload.source_url,
+        "base_branch": payload.base_branch,
+        "slack_user_id": payload.slack_user_id,
+    }).to_string();
+
+    let item = InboxItem::create(
+        pool,
+        &CreateInboxItem {
+            project_id: integrations.project_id,
+            source: InboxSource::Manual,
+            source_item_id,
+            source_url: payload.source_url.clone(),
+            title: title.clone(),
+            raw_payload_json: Some(raw_payload_json),
+            kind: kind.clone(),
+            status: InboxItemStatus::Pending, // Will be updated to Accepted after task creation
+            prd_markdown: Some(prd_markdown.clone()),
+            action_token,
+            linear_issue_id: None,
+            linear_issue_url: None,
+        },
+        inbox_item_id,
+    )
+    .await?;
+
+    info!("Created inbox item {} for personal-ai quick request", item.id);
+
+    // 4. Post to Slack (best-effort) - show as Accepted immediately (no buttons)
+    let mut slack_posted = false;
+    let mut slack_channel_id: Option<String> = None;
+    let mut slack_message_ts: Option<String> = None;
+
+    if let (Some(bot_token), Some(channel_id)) = (
+        integrations.slack_bot_token.as_ref(),
+        integrations.slack_channel_id.as_ref(),
+    ) {
+        let client = SlackClient::new(bot_token);
+        let kind_str = format!("{:?}", kind).to_lowercase();
+
+        // Build blocks with Accepted status (no buttons)
+        let blocks = build_prd_blocks_json(
+            &title,
+            &kind_str,
+            "personal-ai",
+            &prd_markdown,
+            &item.id.to_string(),
+            PrdMessageStatus::Accepted,
+        );
+
+        // Include user mention if provided
+        let message_text = if let Some(ref user_id) = payload.slack_user_id {
+            format!("<@{}> created (auto-accepted): {}", user_id, title)
+        } else {
+            format!("[Auto-accepted] {}", title)
+        };
+
+        match client.post_message_json(channel_id, &message_text, blocks, None).await {
+            Ok(result) => {
+                slack_posted = true;
+                slack_channel_id = Some(result.channel.clone());
+                slack_message_ts = Some(result.ts.clone());
+
+                // Store Slack message reference
+                if let Err(e) = InboxItem::set_slack_message(pool, item.id, &result.channel, &result.ts).await {
+                    warn!("Failed to store Slack message reference: {}", e);
+                }
+                info!("Posted PRD to Slack for personal-ai quick: {} (ts: {})", title, result.ts);
+            }
+            Err(e) => {
+                warn!("Failed to post PRD to Slack (best-effort): {}", e);
+            }
+        }
+    }
+
+    // Store Slack user ID if provided
+    if let Some(ref user_id) = payload.slack_user_id {
+        if let Err(e) = InboxItem::set_slack_accepted_by(pool, item.id, user_id).await {
+            warn!("Failed to store Slack accepted by user: {}", e);
+        }
+    }
+
+    // 5. Create task from PRD
+    let task = Task::create(
+        pool,
+        &CreateTask::from_title_description(
+            integrations.project_id,
+            title.clone(),
+            Some(prd_markdown.clone()),
+        ),
+        Uuid::new_v4(),
+    )
+    .await?;
+
+    info!("Created task {} from personal-ai quick request", task.id);
+
+    // 6. Create Linear issue if configured (best-effort)
+    let mut linear_issue_id: Option<String> = None;
+    let mut linear_issue_url: Option<String> = None;
+
+    if let (Some(api_key), Some(team_id)) = (
+        integrations.linear_api_key.as_deref(),
+        integrations.linear_team_id.as_deref(),
+    ) {
+        let mut description = prd_markdown.clone();
+
+        // Add VK task link at the top of description
+        let vk_task_url = get_vk_task_url(&integrations.project_id, &task.id);
+        if !vk_task_url.is_empty() {
+            let vk_link = format!("**[View in Vibe Kanban]({})**\n\n", vk_task_url);
+            description = format!("{}{}", vk_link, description);
+        }
+
+        if let Some(ref source_url) = payload.source_url {
+            if !description.trim().is_empty() {
+                description.push_str("\n\n");
+            }
+            description.push_str(&format!("Source: {}", source_url));
+        }
+        if description.trim().is_empty() {
+            description = title.clone();
+        }
+
+        match linear_create_issue(
+            api_key,
+            team_id,
+            &title,
+            &description,
+            integrations.linear_state_id_todo.as_deref(),
+        ).await {
+            Ok(issue) => {
+                linear_issue_id = Some(issue.id);
+                linear_issue_url = issue.url;
+                info!("Created Linear issue for personal-ai quick task {}", task.id);
+            }
+            Err(e) => {
+                warn!("Failed to create Linear issue (best-effort): {}", e);
+            }
+        }
+    }
+
+    // 7. Update inbox item to Accepted status with task_id and linear info
+    InboxItem::update(
+        pool,
+        item.id,
+        &UpdateInboxItem {
+            title: None,
+            kind: None,
+            status: Some(InboxItemStatus::Accepted),
+            prd_markdown: None,
+            task_id: Some(task.id),
+            linear_issue_id: linear_issue_id.clone(),
+            linear_issue_url: linear_issue_url.clone(),
+            outbound_last_error: None,
+        },
+    ).await?;
+
+    // 8. Create workspace and start Claude Code DEFAULT
+    let project_repos = ProjectRepo::find_repos_for_project(pool, integrations.project_id).await?;
+    let base_branch = payload.base_branch.as_deref().unwrap_or("main");
+
+    let mut workspace_id: Option<Uuid> = None;
+    let mut execution_process_id: Option<Uuid> = None;
+    let mut started = false;
+    let mut start_error: Option<String> = None;
+
+    if !project_repos.is_empty() {
+        // Claude Code with DEFAULT profile (no approvals)
+        let executor_profile_id = ExecutorProfileId::new(BaseCodingAgent::ClaudeCode);
+
+        // Compute agent_working_dir based on repo count
+        let agent_working_dir = if project_repos.len() == 1 {
+            Some(project_repos[0].name.clone())
+        } else {
+            None
+        };
+
+        let attempt_id = Uuid::new_v4();
+        let git_branch_name = deployment
+            .container()
+            .git_branch_from_workspace(&attempt_id, &task.title)
+            .await;
+
+        // Create workspace
+        let workspace = Workspace::create(
+            pool,
+            &CreateWorkspace {
+                branch: git_branch_name,
+                agent_working_dir,
+            },
+            attempt_id,
+            task.id,
+        )
+        .await?;
+
+        workspace_id = Some(workspace.id);
+
+        // Add repos to workspace with the specified base branch
+        let workspace_repos: Vec<CreateWorkspaceRepo> = project_repos
+            .iter()
+            .map(|repo| CreateWorkspaceRepo {
+                repo_id: repo.id,
+                target_branch: base_branch.to_string(),
+            })
+            .collect();
+        let _ = db::models::workspace_repo::WorkspaceRepo::create_many(
+            pool,
+            workspace.id,
+            &workspace_repos,
+        ).await;
+
+        // Start the workspace
+        match deployment
+            .container()
+            .start_workspace(&workspace, executor_profile_id)
+            .await
+        {
+            Ok(exec_process) => {
+                execution_process_id = Some(exec_process.id);
+                started = true;
+                info!(
+                    "Started workspace {} for task {} via personal-ai quick",
+                    workspace.id, task.id
+                );
+            }
+            Err(err) => {
+                start_error = Some(err.to_string());
+                warn!("Failed to start workspace from personal-ai quick: {}", err);
+            }
+        }
+
+        // Post started notification (best-effort)
+        services::services::inbox_outbound::post_started_if_needed(pool, &integrations, &item).await;
+    } else {
+        start_error = Some("No repositories configured for project".to_string());
+    }
+
+    Ok(Json(ApiResponse::success(PersonalAiResponse {
+        inbox_item_id: item.id,
+        task_id: task.id,
+        workspace_id,
+        execution_process_id,
+        slack_posted,
+        slack_channel_id,
+        slack_message_ts,
+        started,
+        start_error,
+    })))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/linear/{webhook_token}", post(linear_webhook))
@@ -1571,4 +1905,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/sentry/{webhook_token}", post(sentry_webhook))
         .route("/slack/commands", post(slack_commands))
         .route("/slack/interactivity", post(slack_interactivity))
+        .route("/personal-ai/{webhook_token}", post(personal_ai_quick))
 }
