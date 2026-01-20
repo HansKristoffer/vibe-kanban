@@ -67,6 +67,7 @@ pub struct PersonalAiPayload {
 pub struct PersonalAiResponse {
     inbox_item_id: Uuid,
     task_id: Uuid,
+    task_url: String,
     workspace_id: Option<Uuid>,
     execution_process_id: Option<Uuid>,
     slack_posted: bool,
@@ -1885,6 +1886,7 @@ pub async fn personal_ai_quick(
     Ok(Json(ApiResponse::success(PersonalAiResponse {
         inbox_item_id: item.id,
         task_id: task.id,
+        task_url: get_vk_task_url(&integrations.project_id, &task.id),
         workspace_id,
         execution_process_id,
         slack_posted,

@@ -54,6 +54,7 @@ curl -X POST "https://your-vk-instance/api/webhooks/personal-ai/your-webhook-tok
   "data": {
     "inbox_item_id": "550e8400-e29b-41d4-a716-446655440000",
     "task_id": "550e8400-e29b-41d4-a716-446655440001",
+    "task_url": "https://your-vk-instance/projects/project-uuid/tasks/550e8400-e29b-41d4-a716-446655440001",
     "workspace_id": "550e8400-e29b-41d4-a716-446655440002",
     "execution_process_id": "550e8400-e29b-41d4-a716-446655440003",
     "slack_posted": true,
@@ -71,6 +72,7 @@ curl -X POST "https://your-vk-instance/api/webhooks/personal-ai/your-webhook-tok
 |-------|------|-------------|
 | `inbox_item_id` | UUID | The created inbox item ID |
 | `task_id` | UUID | The created task ID |
+| `task_url` | string | URL to view the task in Vibe Kanban (requires `VK_PUBLIC_BASE_URL` env var for absolute URL) |
 | `workspace_id` | UUID | The created workspace ID (null if no repos configured) |
 | `execution_process_id` | UUID | The execution process ID (null if agent didn't start) |
 | `slack_posted` | boolean | Whether the Slack message was posted successfully |

@@ -22,6 +22,7 @@
 #   --no-mcp    Skip installing the MCP server binary
 #   --skip-deps Skip dependency installation (Homebrew, Node, pnpm, Rust)
 #   --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
+#   --no-auto-update    Disable auto-update daemon (polls git for changes)
 #   --help      Show this help message
 #
 # Note: sudo is required for installing binaries to /usr/local/bin and creating /var/vibe-kanban
@@ -40,14 +41,20 @@ is_truthy() {
 # Configuration
 INSTALL_DIR="/usr/local/bin/vibe-kanban"
 MCP_INSTALL_DIR="/usr/local/bin/vibe-kanban-mcp"
+AUTO_UPDATE_SCRIPT_INSTALL_DIR="/usr/local/bin/vibe-kanban-autoupdate"
 SERVICE_NAME="com.vibekanban.server"
+AUTO_UPDATE_SERVICE_NAME="com.vibekanban.autoupdate"
 USER="${SUDO_USER:-$(whoami)}"
 USER_HOME=$(eval echo "~$USER")
 # LaunchAgent plist goes in user's LaunchAgents directory
 PLIST_PATH="${USER_HOME}/Library/LaunchAgents/${SERVICE_NAME}.plist"
+AUTO_UPDATE_PLIST_PATH="${USER_HOME}/Library/LaunchAgents/${AUTO_UPDATE_SERVICE_NAME}.plist"
 # Also track old daemon path for migration
 OLD_DAEMON_PLIST="/Library/LaunchDaemons/${SERVICE_NAME}.plist"
 WORK_DIR="/var/vibe-kanban"
+REPO_PATH_FILE="${WORK_DIR}/.repo-path"
+# Auto-update interval in seconds (15 minutes)
+AUTO_UPDATE_INTERVAL=900
 
 # Colors for output
 RED='\033[0;31m'
@@ -62,6 +69,7 @@ FORCE_REINSTALL=false
 INSTALL_MCP=true
 SKIP_DEPS=false
 ENABLE_TAILSCALE_FUNNEL=false
+ENABLE_AUTO_UPDATE=true
 for arg in "$@"; do
     case $arg in
         --force)
@@ -78,6 +86,10 @@ for arg in "$@"; do
             ;;
         --tailscale-funnel)
             ENABLE_TAILSCALE_FUNNEL=true
+            shift
+            ;;
+        --no-auto-update)
+            ENABLE_AUTO_UPDATE=false
             shift
             ;;
         --help|-h)
@@ -100,6 +112,7 @@ for arg in "$@"; do
             echo "  --no-mcp     Skip installing the MCP server binary"
             echo "  --skip-deps  Skip dependency installation (Homebrew, Node, pnpm, Rust)"
             echo "  --tailscale-funnel  Enable Tailscale Funnel setup (or use TAILSCALE_FUNNEL=1 in .env)"
+            echo "  --no-auto-update    Disable auto-update daemon (or use AUTO_UPDATE=0 in .env)"
             echo "  --help       Show this help message"
             echo ""
             echo "Configuration is done via .env file. Copy .env.example to .env and edit:"
@@ -115,6 +128,7 @@ for arg in "$@"; do
             echo "  PORT              Server port (default: 3000)"
             echo "  HOST              Server host (default: 0.0.0.0; auto: 127.0.0.1 with Funnel)"
             echo "  TAILSCALE_FUNNEL  Set to 1 to enable Tailscale Funnel for public HTTPS"
+            echo "  AUTO_UPDATE       Set to 0 to disable auto-update daemon (default: 1)"
             echo ""
             echo "Example:"
             echo "  sudo ./install-macos-service.sh"
@@ -167,6 +181,12 @@ fi
 PORT="${PORT:-3000}"
 if is_truthy "${TAILSCALE_FUNNEL:-}"; then
     ENABLE_TAILSCALE_FUNNEL=true
+fi
+# Check AUTO_UPDATE from .env (default is enabled, so we check for explicit disable)
+if [ -n "${AUTO_UPDATE:-}" ]; then
+    if ! is_truthy "${AUTO_UPDATE}"; then
+        ENABLE_AUTO_UPDATE=false
+    fi
 fi
 
 # When enabling Funnel, default HOST to loopback unless explicitly provided.
@@ -519,6 +539,10 @@ fi
 mkdir -p "$WORK_DIR"
 chown "$USER" "$WORK_DIR"
 
+# Store repository path for auto-update script
+echo "$SCRIPT_DIR" > "$REPO_PATH_FILE"
+chown "$USER" "$REPO_PATH_FILE"
+
 # Create or preserve LaunchAgent plist
 if [ "$IS_UPDATE" = false ]; then
     # Create new plist for fresh installation
@@ -642,6 +666,108 @@ else
     echo "  tail -f ${WORK_DIR}/vibe-kanban.log"
 fi
 
+# ============================================================
+# AUTO-UPDATE SERVICE SETUP
+# ============================================================
+if [ "$ENABLE_AUTO_UPDATE" = true ]; then
+    echo ""
+    echo -e "${CYAN}Setting up auto-update service...${NC}"
+    
+    # Install auto-update script
+    AUTO_UPDATE_SCRIPT="${SCRIPT_DIR}/auto-update.sh"
+    if [ -f "$AUTO_UPDATE_SCRIPT" ]; then
+        echo "Installing auto-update script to $AUTO_UPDATE_SCRIPT_INSTALL_DIR..."
+        cp "$AUTO_UPDATE_SCRIPT" "$AUTO_UPDATE_SCRIPT_INSTALL_DIR"
+        chmod +x "$AUTO_UPDATE_SCRIPT_INSTALL_DIR"
+        chown "$USER" "$AUTO_UPDATE_SCRIPT_INSTALL_DIR"
+    else
+        echo -e "${YELLOW}Warning: Auto-update script not found at $AUTO_UPDATE_SCRIPT${NC}"
+        ENABLE_AUTO_UPDATE=false
+    fi
+fi
+
+if [ "$ENABLE_AUTO_UPDATE" = true ]; then
+    # Stop existing auto-update service if running
+    if sudo -u "$USER" launchctl list 2>/dev/null | grep -q "$AUTO_UPDATE_SERVICE_NAME"; then
+        echo "Stopping existing auto-update service..."
+        sudo -u "$USER" launchctl unload "$AUTO_UPDATE_PLIST_PATH" 2>/dev/null || true
+    fi
+    
+    # Create sudoers entry for passwordless install script execution
+    SUDOERS_FILE="/etc/sudoers.d/vibe-kanban-autoupdate"
+    echo "Setting up passwordless sudo for auto-update..."
+    
+    # Create sudoers entry that allows user to run install script without password
+    cat > "$SUDOERS_FILE" <<EOF
+# Allow ${USER} to run the Vibe Kanban install script without a password
+# This is required for the auto-update daemon to work
+${USER} ALL=(ALL) NOPASSWD: ${SCRIPT_DIR}/install-macos-service.sh
+EOF
+    
+    # Set proper permissions (must be 0440 for sudoers.d files)
+    chmod 0440 "$SUDOERS_FILE"
+    
+    # Validate sudoers file
+    if ! visudo -c -f "$SUDOERS_FILE" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Warning: Sudoers file validation failed. Removing...${NC}"
+        rm -f "$SUDOERS_FILE"
+        echo -e "${YELLOW}Auto-update may require manual password entry.${NC}"
+    else
+        echo -e "${GREEN}Sudoers entry created successfully.${NC}"
+    fi
+    
+    # Create auto-update LaunchAgent plist
+    echo "Creating auto-update LaunchAgent..."
+    cat > "$AUTO_UPDATE_PLIST_PATH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${AUTO_UPDATE_SERVICE_NAME}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${AUTO_UPDATE_SCRIPT_INSTALL_DIR}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${WORK_DIR}</string>
+    <key>StartInterval</key>
+    <integer>${AUTO_UPDATE_INTERVAL}</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${WORK_DIR}/auto-update.log</string>
+    <key>StandardErrorPath</key>
+    <string>${WORK_DIR}/auto-update.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+    # Set permissions (owned by user, not root)
+    chown "$USER" "$AUTO_UPDATE_PLIST_PATH"
+    chmod 644 "$AUTO_UPDATE_PLIST_PATH"
+    
+    # Load auto-update service
+    echo "Starting auto-update service..."
+    sudo -u "$USER" launchctl load "$AUTO_UPDATE_PLIST_PATH" 2>/dev/null || sudo -u "$USER" launchctl load -w "$AUTO_UPDATE_PLIST_PATH"
+    
+    echo -e "${GREEN}Auto-update service installed (checks every 15 minutes)${NC}"
+else
+    # If auto-update is disabled, make sure to remove any existing auto-update service
+    if [ -f "$AUTO_UPDATE_PLIST_PATH" ]; then
+        echo "Removing auto-update service (disabled)..."
+        if sudo -u "$USER" launchctl list 2>/dev/null | grep -q "$AUTO_UPDATE_SERVICE_NAME"; then
+            sudo -u "$USER" launchctl unload "$AUTO_UPDATE_PLIST_PATH" 2>/dev/null || true
+        fi
+        rm -f "$AUTO_UPDATE_PLIST_PATH"
+    fi
+fi
+
 # Clean up old backups (keep last 3) if updating
 if [ "$IS_UPDATE" = true ]; then
     echo "Cleaning up old backups..."
@@ -666,6 +792,10 @@ echo "  Service:   ${SERVICE_NAME}"
 echo "  Logs:      ${WORK_DIR}/vibe-kanban.log"
 echo "  Data:      ${USER_HOME}/Library/Application Support/ai.bloop.vibe-kanban/"
 echo "  URL:       http://localhost:${PORT}"
+if [ "$ENABLE_AUTO_UPDATE" = true ]; then
+    echo "  Auto-update: Enabled (every 15 min)"
+    echo "  Auto-update logs: ${WORK_DIR}/auto-update.log"
+fi
 echo ""
 echo "Service management (no sudo needed):"
 echo "  Start:     launchctl load ${PLIST_PATH}"
@@ -673,13 +803,25 @@ echo "  Stop:      launchctl unload ${PLIST_PATH}"
 echo "  Restart:   launchctl unload ${PLIST_PATH} && launchctl load ${PLIST_PATH}"
 echo "  Status:    launchctl list | grep ${SERVICE_NAME}"
 echo "  Logs:      tail -f ${WORK_DIR}/vibe-kanban.log"
+if [ "$ENABLE_AUTO_UPDATE" = true ]; then
+    echo ""
+    echo "Auto-update management:"
+    echo "  Stop:      launchctl unload ${AUTO_UPDATE_PLIST_PATH}"
+    echo "  Start:     launchctl load ${AUTO_UPDATE_PLIST_PATH}"
+    echo "  Status:    launchctl list | grep ${AUTO_UPDATE_SERVICE_NAME}"
+    echo "  Logs:      tail -f ${WORK_DIR}/auto-update.log"
+fi
 echo ""
 if [ -n "$BACKUP_PATH" ]; then
     echo "Rollback:    sudo mv ${BACKUP_PATH} ${INSTALL_DIR}"
     echo ""
 fi
-echo "To update in the future, rebuild and run this script again:"
-echo "  ./local-build.sh && sudo ./install-macos-service.sh"
+if [ "$ENABLE_AUTO_UPDATE" = true ]; then
+    echo -e "${CYAN}Auto-update is enabled. The service will automatically update when changes are pushed to git.${NC}"
+else
+    echo "To update in the future, rebuild and run this script again:"
+    echo "  ./local-build.sh && sudo ./install-macos-service.sh"
+fi
 echo ""
 echo -e "${CYAN}Note: LaunchAgents run in your user session with keychain access.${NC}"
 echo -e "${CYAN}The service will start automatically when you log in.${NC}"

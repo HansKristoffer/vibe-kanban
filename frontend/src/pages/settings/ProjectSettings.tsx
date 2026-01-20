@@ -1675,6 +1675,7 @@ export function ProjectSettings() {
   "data": {
     "inbox_item_id": "550e8400-e29b-41d4-a716-446655440000",
     "task_id": "550e8400-e29b-41d4-a716-446655440001",
+    "task_url": "${webhookUrls.personal_ai.replace('/api/webhooks/personal-ai/' + integrations.webhook_token, '')}/projects/${selectedProjectId}/tasks/550e8400-e29b-41d4-a716-446655440001",
     "workspace_id": "550e8400-e29b-41d4-a716-446655440002",
     "execution_process_id": "550e8400-e29b-41d4-a716-446655440003",
     "slack_posted": true,

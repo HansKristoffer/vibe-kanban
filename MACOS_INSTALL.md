@@ -24,6 +24,7 @@ The install script automatically handles:
 - Generating TypeScript types
 - Building the project
 - Installing and starting the service
+- Setting up auto-update (checks for updates every 15 minutes)
 
 ---
 
@@ -85,9 +86,45 @@ Set `PORT=8080` in your `.env` file, then run the install script.
 
 ---
 
-## Updating
+## Auto-Update
 
-Same script handles updates — just pull and run:
+By default, the install script sets up an auto-update daemon that checks for git updates every 15 minutes. When changes are detected, it automatically pulls and reinstalls the new version.
+
+### How It Works
+
+1. The `com.vibekanban.autoupdate` LaunchAgent runs every 15 minutes
+2. It fetches the latest changes from the git remote
+3. If updates are available, it pulls and runs the install script
+4. All activity is logged to `/var/vibe-kanban/auto-update.log`
+
+### Disable Auto-Update
+
+To install without auto-update:
+
+```bash
+sudo ./install-macos-service.sh --no-auto-update
+```
+
+Or set in your `.env` file:
+
+```
+AUTO_UPDATE=0
+```
+
+### Auto-Update Management
+
+| Action | Command |
+|--------|---------|
+| Stop | `launchctl unload ~/Library/LaunchAgents/com.vibekanban.autoupdate.plist` |
+| Start | `launchctl load ~/Library/LaunchAgents/com.vibekanban.autoupdate.plist` |
+| Status | `launchctl list \| grep autoupdate` |
+| Logs | `tail -f /var/vibe-kanban/auto-update.log` |
+
+---
+
+## Manual Updating
+
+If auto-update is disabled, you can update manually:
 
 ```bash
 git pull                        # Get latest code
@@ -138,9 +175,13 @@ LaunchAgents run in your user session, so no `sudo` is needed for these commands
 |------|-------|
 | Binary | `/usr/local/bin/vibe-kanban` |
 | MCP Binary | `/usr/local/bin/vibe-kanban-mcp` |
+| Auto-Update Script | `/usr/local/bin/vibe-kanban-autoupdate` |
 | Service Config | `~/Library/LaunchAgents/com.vibekanban.server.plist` |
+| Auto-Update Config | `~/Library/LaunchAgents/com.vibekanban.autoupdate.plist` |
 | Logs | `/var/vibe-kanban/vibe-kanban.log` |
+| Auto-Update Logs | `/var/vibe-kanban/auto-update.log` |
 | Database & Config | `~/Library/Application Support/ai.bloop.vibe-kanban/` |
+| Repo Path (for auto-update) | `/var/vibe-kanban/.repo-path` |
 
 > **Note:** Updates only replace the binary. Your database and settings are preserved.
 
@@ -194,6 +235,7 @@ nano .env  # or your preferred editor
 | `PORT` | `3000` | Server port |
 | `HOST` | `0.0.0.0` | Server host (defaults to `127.0.0.1` when `TAILSCALE_FUNNEL=1`) |
 | `TAILSCALE_FUNNEL` | - | Set to `1` to enable Tailscale Funnel for public HTTPS access |
+| `AUTO_UPDATE` | `1` | Set to `0` to disable the auto-update daemon |
 | `RUST_LOG` | `info` | Log level |
 
 ---
@@ -204,12 +246,31 @@ nano .env  # or your preferred editor
 sudo ./uninstall-macos-service.sh
 ```
 
+This removes:
+- Main service and auto-update LaunchAgents
+- All binaries (`vibe-kanban`, `vibe-kanban-mcp`, `vibe-kanban-autoupdate`)
+- Sudoers entry for auto-update
+- Optionally the working directory (`/var/vibe-kanban`)
+
 Or manually:
 ```bash
+# Stop services
 launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist
+launchctl unload ~/Library/LaunchAgents/com.vibekanban.autoupdate.plist
+
+# Remove plists
 rm -f ~/Library/LaunchAgents/com.vibekanban.server.plist
+rm -f ~/Library/LaunchAgents/com.vibekanban.autoupdate.plist
+
+# Remove binaries
 sudo rm -f /usr/local/bin/vibe-kanban
 sudo rm -f /usr/local/bin/vibe-kanban-mcp
+sudo rm -f /usr/local/bin/vibe-kanban-autoupdate
+
+# Remove sudoers entry
+sudo rm -f /etc/sudoers.d/vibe-kanban-autoupdate
+
+# Remove working directory
 sudo rm -rf /var/vibe-kanban
 ```
 
@@ -244,6 +305,27 @@ sudo chown -R $(whoami) /var/vibe-kanban
 sudo chown -R $(whoami) ~/Library/Application\ Support/ai.bloop.vibe-kanban
 ```
 
+### Auto-update not working
+
+```bash
+# Check auto-update logs
+cat /var/vibe-kanban/auto-update.log
+
+# Verify the service is running
+launchctl list | grep autoupdate
+
+# Check repo path is set
+cat /var/vibe-kanban/.repo-path
+
+# Manually trigger an update check
+/usr/local/bin/vibe-kanban-autoupdate
+```
+
+Common issues:
+- **Sudoers not configured**: The auto-update script needs passwordless sudo. Reinstall with `sudo ./install-macos-service.sh --force`
+- **Git credentials missing**: Ensure git can pull without prompting for credentials
+- **Repo path invalid**: The stored repo path may be outdated. Reinstall the service.
+
 ---
 
 ## Script Options
@@ -252,11 +334,12 @@ sudo chown -R $(whoami) ~/Library/Application\ Support/ai.bloop.vibe-kanban
 sudo ./install-macos-service.sh [OPTIONS]
 
 Options:
-  --force      Force reinstall (recreates service config)
-  --no-mcp     Skip MCP binary installation
-  --skip-deps  Skip dependency installation (use if you already have Homebrew, Node, pnpm, Rust)
+  --force           Force reinstall (recreates service config)
+  --no-mcp          Skip MCP binary installation
+  --skip-deps       Skip dependency installation (use if you already have Homebrew, Node, pnpm, Rust)
   --tailscale-funnel  Enable Tailscale Funnel (or use TAILSCALE_FUNNEL=1 in .env)
-  --help       Show help
+  --no-auto-update  Disable auto-update daemon (or use AUTO_UPDATE=0 in .env)
+  --help            Show help
 ```
 
 The script automatically:
