@@ -12,6 +12,8 @@ import {
   SpinnerGapIcon,
   WarningCircleIcon,
   DotsThreeIcon,
+  GitCommitIcon,
+  PencilSimpleIcon,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -28,7 +30,8 @@ export type RepoAction =
   | 'merge'
   | 'change-target'
   | 'rebase'
-  | 'push';
+  | 'push'
+  | 'commit';
 
 const repoActionOptions: SplitButtonOption<RepoAction>[] = [
   {
@@ -38,6 +41,12 @@ const repoActionOptions: SplitButtonOption<RepoAction>[] = [
   },
   { value: 'merge', label: 'Merge', icon: GitMergeIcon },
 ];
+
+const commitActionOption: SplitButtonOption<RepoAction> = {
+  value: 'commit',
+  label: 'Commit changes',
+  icon: GitCommitIcon,
+};
 
 interface RepoCardProps {
   repoId: string;
@@ -52,6 +61,7 @@ interface RepoCardProps {
   isPushPending?: boolean;
   isPushSuccess?: boolean;
   isPushError?: boolean;
+  uncommittedCount?: number;
   branchDropdownContent?: React.ReactNode;
   onChangeTarget?: () => void;
   onRebase?: () => void;
@@ -73,6 +83,7 @@ export function RepoCard({
   isPushPending = false,
   isPushSuccess = false,
   isPushError = false,
+  uncommittedCount = 0,
   branchDropdownContent,
   onChangeTarget,
   onRebase,
@@ -84,19 +95,36 @@ export function RepoCard({
   const { t: tCommon } = useTranslation('common');
   const [selectedAction, setSelectedAction] = useRepoAction(repoId);
 
-  // Hide "Open pull request" option when PR is already open
-  const hasPrOpen = prStatus === 'open';
-  const availableActionOptions = useMemo(
-    () =>
-      hasPrOpen
-        ? repoActionOptions.filter((opt) => opt.value !== 'pull-request')
-        : repoActionOptions,
-    [hasPrOpen]
-  );
+  const hasUncommittedChanges = uncommittedCount > 0;
 
-  // If PR is open and 'pull-request' was selected, fall back to 'merge'
-  const effectiveSelectedAction =
-    hasPrOpen && selectedAction === 'pull-request' ? 'merge' : selectedAction;
+  // Build action options based on state:
+  // - Show "Commit" first when there are uncommitted changes
+  // - Hide "Open pull request" when PR is already open OR when there are uncommitted changes
+  const hasPrOpen = prStatus === 'open';
+  const availableActionOptions = useMemo(() => {
+    let options = [...repoActionOptions];
+
+    // Filter out pull-request if PR is open or there are uncommitted changes
+    if (hasPrOpen || hasUncommittedChanges) {
+      options = options.filter((opt) => opt.value !== 'pull-request');
+    }
+
+    // Add commit option at the start if there are uncommitted changes
+    if (hasUncommittedChanges) {
+      options = [commitActionOption, ...options];
+    }
+
+    return options;
+  }, [hasPrOpen, hasUncommittedChanges]);
+
+  // Determine effective selected action based on available options
+  const effectiveSelectedAction = useMemo(() => {
+    // If current selection is not available, pick the first available option
+    if (!availableActionOptions.some((opt) => opt.value === selectedAction)) {
+      return availableActionOptions[0]?.value ?? 'merge';
+    }
+    return selectedAction;
+  }, [selectedAction, availableActionOptions]);
 
   return (
     <div className="bg-primary rounded-sm my-base p-base space-y-base">
@@ -142,6 +170,16 @@ export function RepoCard({
           <span className="inline-flex items-center gap-0.5 text-xs text-error shrink-0">
             <ArrowDownIcon className="size-icon-xs" weight="bold" />
             <span className="font-medium">{commitsBehind}</span>
+          </span>
+        )}
+        {/* Uncommitted changes indicator */}
+        {uncommittedCount > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5 text-xs text-warning shrink-0"
+            title={t('git.uncommitted', { count: uncommittedCount })}
+          >
+            <PencilSimpleIcon className="size-icon-xs" weight="bold" />
+            <span className="font-medium">{uncommittedCount}</span>
           </span>
         )}
 

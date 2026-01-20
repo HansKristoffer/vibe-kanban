@@ -120,12 +120,34 @@
       "failedToCreate": "PRの作成に失敗しました",
       "gitCliNotLoggedIn": "Gitが認証されていません。\"gh auth login\" を実行するかGitの認証情報を設定してから再試行してください。",
       "gitCliNotInstalled": "Git CLIがインストールされていません。PRを作成するにはGitをインストールしてください。",
-      "targetBranchNotFound": "ターゲットブランチ '{{branch}}' がリモートに存在しません。プルリクエストを作成する前にブランチが存在することを確認してください。"
+      "targetBranchNotFound": "ターゲットブランチ '{{branch}}' がリモートに存在しません。プルリクエストを作成する前にブランチが存在することを確認してください。",
+      "uncommittedChanges": "コミットされていない変更があります。まず Git パネルで変更をコミットしてください。"
+    },
+    "uncommittedChanges": {
+      "title": "コミットされていない変更が検出されました",
+      "description": "以下のファイルにコミットされていない変更があります。PRを作成する前にコミットする必要があります：",
+      "messageLabel": "コミットメッセージ",
+      "messagePlaceholder": "コミットメッセージを入力...",
+      "commitOnly": "コミット",
+      "commitAndCreatePr": "コミットしてPRを作成",
+      "committing": "コミット中...",
+      "commitFailed": "変更のコミットに失敗しました"
     },
     "loginRequired": {
       "title": "プルリクエストを作成するにはサインインしてください",
       "description": "このタスクでプルリクエストを開く前にサインインが必要です。サインインページに移動します。",
       "action": "サインイン"
+    }
+  },
+  "commitDialog": {
+    "title": "変更をコミット",
+    "description": "メッセージ付きでコミットされていない変更をコミットします。",
+    "messageLabel": "コミットメッセージ",
+    "messagePlaceholder": "コミットメッセージを入力...",
+    "commitButton": "コミット",
+    "committing": "コミット中...",
+    "errors": {
+      "commitFailed": "変更のコミットに失敗しました"
     }
   },
   "attemptHeaderActions": {
@@ -240,6 +262,8 @@
     "labels": {
       "taskBranch": "タスクブランチ"
     },
+    "uncommitted_one": "{{count}}件のコミットされていない変更",
+    "uncommitted_other": "{{count}}件のコミットされていない変更",
     "pr": {
       "number": "PR #{{number}}",
       "open": "Open PR #{{number}}",

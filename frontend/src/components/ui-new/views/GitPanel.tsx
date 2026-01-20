@@ -22,6 +22,7 @@ export interface RepoInfo {
   isPushPending?: boolean;
   isPushSuccess?: boolean;
   isPushError?: boolean;
+  uncommittedCount?: number;
 }
 
 interface GitPanelProps {
@@ -72,6 +73,7 @@ export function GitPanel({
             isPushPending={repo.isPushPending}
             isPushSuccess={repo.isPushSuccess}
             isPushError={repo.isPushError}
+            uncommittedCount={repo.uncommittedCount}
             onChangeTarget={() => onActionsClick?.(repo.id, 'change-target')}
             onRebase={() => onActionsClick?.(repo.id, 'rebase')}
             onActionsClick={(action) => onActionsClick?.(repo.id, action)}

@@ -57,6 +57,7 @@ pub enum PrError {
     GitCliNotInstalled,
     TargetBranchNotFound { branch: String },
     UnsupportedProvider,
+    UncommittedChanges { branch: String, files: Vec<String> },
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -269,6 +270,14 @@ pub async fn create_pr(
     if let Err(e) = git.push_to_remote(&worktree_path, &workspace.branch, false) {
         tracing::error!("Failed to push branch to remote: {}", e);
         match e {
+            GitServiceError::WorktreeDirty(branch, files) => {
+                return Ok(ResponseJson(ApiResponse::error_with_data(
+                    PrError::UncommittedChanges {
+                        branch,
+                        files: files.split(", ").map(String::from).collect(),
+                    },
+                )));
+            }
             GitServiceError::GitCLI(GitCliError::AuthFailed(_)) => {
                 return Ok(ResponseJson(ApiResponse::error_with_data(
                     PrError::GitCliNotLoggedIn,

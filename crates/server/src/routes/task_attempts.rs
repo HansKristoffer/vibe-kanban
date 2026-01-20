@@ -620,6 +620,42 @@ pub enum PushError {
     ForcePushRequired,
 }
 
+#[derive(Debug, Deserialize, TS)]
+pub struct CommitRequest {
+    pub message: String,
+    pub repo_id: Uuid,
+}
+
+pub async fn commit_changes(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    Json(request): Json<CommitRequest>,
+) -> Result<ResponseJson<ApiResponse<bool>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let workspace_repo =
+        WorkspaceRepo::find_by_workspace_and_repo_id(pool, workspace.id, request.repo_id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+
+    let repo = Repo::find_by_id(pool, workspace_repo.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&workspace)
+        .await?;
+    let workspace_path = Path::new(&container_ref);
+    let worktree_path = workspace_path.join(&repo.name);
+
+    let committed = deployment
+        .git()
+        .commit(&worktree_path, &request.message)?;
+
+    Ok(ResponseJson(ApiResponse::success(committed)))
+}
+
 #[derive(serde::Deserialize, TS)]
 pub struct OpenEditorRequest {
     editor_type: Option<String>,
@@ -1839,6 +1875,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/merge", post(merge_task_attempt))
         .route("/push", post(push_task_attempt_branch))
         .route("/push/force", post(force_push_task_attempt_branch))
+        .route("/commit", post(commit_changes))
         .route("/rebase", post(rebase_task_attempt))
         .route("/conflicts/abort", post(abort_conflicts_task_attempt))
         .route("/pr", post(pr::create_pr))

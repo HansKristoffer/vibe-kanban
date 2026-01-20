@@ -120,12 +120,34 @@
       "failedToCreate": "Error al crear PR",
       "gitCliNotLoggedIn": "Git no está autenticado. Ejecuta \"gh auth login\" (o configura las credenciales de Git) e inténtalo de nuevo.",
       "gitCliNotInstalled": "Git CLI no está instalado. Instala Git para crear una PR.",
-      "targetBranchNotFound": "La rama objetivo '{{branch}}' no existe en el remoto. Por favor, asegúrese de que la rama exista antes de crear una solicitud de extracción."
+      "targetBranchNotFound": "La rama objetivo '{{branch}}' no existe en el remoto. Por favor, asegúrese de que la rama exista antes de crear una solicitud de extracción.",
+      "uncommittedChanges": "Hay cambios sin confirmar. Por favor, confirme sus cambios primero usando el panel de Git."
+    },
+    "uncommittedChanges": {
+      "title": "Cambios sin confirmar detectados",
+      "description": "Los siguientes archivos tienen cambios sin confirmar que deben ser confirmados antes de crear un PR:",
+      "messageLabel": "Mensaje de commit",
+      "messagePlaceholder": "Ingresa un mensaje de commit...",
+      "commitOnly": "Confirmar",
+      "commitAndCreatePr": "Confirmar y crear PR",
+      "committing": "Confirmando...",
+      "commitFailed": "Error al confirmar los cambios"
     },
     "loginRequired": {
       "title": "Inicia sesión para crear un pull request",
       "description": "Debes iniciar sesión antes de poder abrir un pull request para esta tarea. Te llevaremos a la página de inicio de sesión.",
       "action": "Iniciar sesión"
+    }
+  },
+  "commitDialog": {
+    "title": "Confirmar cambios",
+    "description": "Confirma tus cambios sin confirmar con un mensaje.",
+    "messageLabel": "Mensaje de commit",
+    "messagePlaceholder": "Ingresa un mensaje de commit...",
+    "commitButton": "Confirmar",
+    "committing": "Confirmando...",
+    "errors": {
+      "commitFailed": "Error al confirmar los cambios"
     }
   },
   "attemptHeaderActions": {
@@ -240,6 +262,8 @@
     "labels": {
       "taskBranch": "Rama de tarea"
     },
+    "uncommitted_one": "{{count}} cambio sin confirmar",
+    "uncommitted_other": "{{count}} cambios sin confirmar",
     "pr": {
       "number": "PR #{{number}}",
       "open": "Open PR #{{number}}",

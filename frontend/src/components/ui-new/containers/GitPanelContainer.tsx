@@ -71,6 +71,10 @@ export function GitPanelContainer({
           prNumber,
           prUrl,
           prStatus,
+          // Include both tracked modifications and untracked new files
+          uncommittedCount:
+            (repoStatus?.uncommitted_count ?? 0) +
+            (repoStatus?.untracked_count ?? 0),
         };
       }),
     [repos, branchStatus]
@@ -195,6 +199,7 @@ export function GitPanelContainer({
         rebase: Actions.GitRebase,
         'change-target': Actions.GitChangeTarget,
         push: Actions.GitPush,
+        commit: Actions.GitCommit,
       };
 
       const actionDef = actionMap[action];

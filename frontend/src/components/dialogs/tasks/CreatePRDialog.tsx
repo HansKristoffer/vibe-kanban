@@ -218,6 +218,10 @@ const CreatePRDialogImpl = NiceModal.create<CreatePRDialogProps>(
           );
           setGhCliHelp(null);
           return;
+        } else if (result.error.type === 'uncommitted_changes') {
+          setError(t('createPrDialog.errors.uncommittedChanges'));
+          setGhCliHelp(null);
+          return;
         }
       }
 
@@ -372,7 +376,11 @@ const CreatePRDialogImpl = NiceModal.create<CreatePRDialogProps>(
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={handleCancelCreatePR}>
+              <Button
+                variant="outline"
+                onClick={handleCancelCreatePR}
+                disabled={creatingPR}
+              >
                 {t('common:buttons.cancel')}
               </Button>
               <Button

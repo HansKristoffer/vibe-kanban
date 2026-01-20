@@ -295,6 +295,8 @@
     "branch": {
       "current": "目前"
     },
+    "uncommitted_one": "{{count}} 個未提交的變更",
+    "uncommitted_other": "{{count}} 個未提交的變更",
     "forcePushDialog": {
       "title": "需要強制推送",
       "description": "遠端分支{{branchLabel}}已與本機分支分岔。一般推送被拒絕。",
@@ -475,12 +477,34 @@
       "failedToCreate": "建立 PR 失敗",
       "gitCliNotLoggedIn": "Git 尚未驗證。請執行 gh auth login（或設定 Git 憑證）後重試。",
       "gitCliNotInstalled": "未安裝 Git CLI。請安裝 Git 以建立 PR。",
-      "targetBranchNotFound": "遠端不存在目標分支 {{branch}}。建立 PR 前請確認該分支存在。"
+      "targetBranchNotFound": "遠端不存在目標分支 {{branch}}。建立 PR 前請確認該分支存在。",
+      "uncommittedChanges": "有未提交的變更。請先使用 Git 面板提交您的變更。"
+    },
+    "uncommittedChanges": {
+      "title": "偵測到未提交的變更",
+      "description": "以下檔案有未提交的變更，需要在建立 PR 前提交：",
+      "messageLabel": "提交訊息",
+      "messagePlaceholder": "輸入提交訊息...",
+      "commitOnly": "提交",
+      "commitAndCreatePr": "提交並建立 PR",
+      "committing": "提交中...",
+      "commitFailed": "提交變更失敗"
     },
     "loginRequired": {
       "title": "登入以建立 PR",
       "description": "您需要登入才能為此任務建立 PR。我們會將您導向登入頁面。",
       "action": "登入"
+    }
+  },
+  "commitDialog": {
+    "title": "提交變更",
+    "description": "使用訊息提交您的未提交變更。",
+    "messageLabel": "提交訊息",
+    "messagePlaceholder": "輸入提交訊息...",
+    "commitButton": "提交",
+    "committing": "提交中...",
+    "errors": {
+      "commitFailed": "提交變更失敗"
     }
   },
   "showcases": {

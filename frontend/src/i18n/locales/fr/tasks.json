@@ -349,6 +349,8 @@
     "branch": {
       "current": "actuelle"
     },
+    "uncommitted_one": "{{count}} modification non commitée",
+    "uncommitted_other": "{{count}} modifications non commitées",
     "forcePushDialog": {
       "title": "Push forcé requis",
       "description": "La branche distante{{branchLabel}} a divergé de votre branche locale. Un push normal a été rejeté.",
@@ -542,12 +544,34 @@
       "failedToCreate": "Échec de la création de la PR",
       "gitCliNotLoggedIn": "Git n'est pas authentifié. Exécutez \"gh auth login\" (ou configurez les identifiants Git) et réessayez.",
       "gitCliNotInstalled": "Git CLI n'est pas installé. Installez Git pour créer une PR.",
-      "targetBranchNotFound": "La branche cible '{{branch}}' n'existe pas sur le dépôt distant. Veuillez vous assurer que la branche existe avant de créer une pull request."
+      "targetBranchNotFound": "La branche cible '{{branch}}' n'existe pas sur le dépôt distant. Veuillez vous assurer que la branche existe avant de créer une pull request.",
+      "uncommittedChanges": "Il y a des modifications non commitées. Veuillez d'abord commiter vos modifications via le panneau Git."
+    },
+    "uncommittedChanges": {
+      "title": "Modifications non commitées détectées",
+      "description": "Les fichiers suivants ont des modifications non commitées qui doivent être commitées avant de créer une PR :",
+      "messageLabel": "Message de commit",
+      "messagePlaceholder": "Entrez un message de commit...",
+      "commitOnly": "Commiter",
+      "commitAndCreatePr": "Commiter et créer la PR",
+      "committing": "Commit en cours...",
+      "commitFailed": "Échec du commit des modifications"
     },
     "loginRequired": {
       "title": "Connectez-vous pour créer une pull request",
       "description": "Vous devez vous connecter avant de pouvoir ouvrir une pull request pour cette tâche. Nous vous amènerons à la page de connexion.",
       "action": "Se connecter"
+    }
+  },
+  "commitDialog": {
+    "title": "Commiter les modifications",
+    "description": "Commitez vos modifications non commitées avec un message.",
+    "messageLabel": "Message de commit",
+    "messagePlaceholder": "Entrez un message de commit...",
+    "commitButton": "Commiter",
+    "committing": "Commit en cours...",
+    "errors": {
+      "commitFailed": "Échec du commit des modifications"
     }
   },
   "showcases": {

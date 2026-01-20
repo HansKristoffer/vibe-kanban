@@ -349,6 +349,8 @@
     "branch": {
       "current": "current"
     },
+    "uncommitted_one": "{{count}} uncommitted change",
+    "uncommitted_other": "{{count}} uncommitted changes",
     "forcePushDialog": {
       "title": "Force Push Required",
       "description": "The remote branch{{branchLabel}} has diverged from your local branch. A regular push was rejected.",
@@ -542,12 +544,34 @@
       "failedToCreate": "Failed to create PR",
       "gitCliNotLoggedIn": "Git is not authenticated. Run \"gh auth login\" (or configure Git credentials) and try again.",
       "gitCliNotInstalled": "Git CLI is not installed. Install Git to create a PR.",
-      "targetBranchNotFound": "Target branch '{{branch}}' does not exist on remote. Please ensure the branch exists before creating a pull request."
+      "targetBranchNotFound": "Target branch '{{branch}}' does not exist on remote. Please ensure the branch exists before creating a pull request.",
+      "uncommittedChanges": "There are uncommitted changes. Please commit your changes first using the Git panel."
+    },
+    "uncommittedChanges": {
+      "title": "Uncommitted changes detected",
+      "description": "The following files have uncommitted changes that need to be committed before creating a PR:",
+      "messageLabel": "Commit message",
+      "messagePlaceholder": "Enter a commit message...",
+      "commitOnly": "Commit",
+      "commitAndCreatePr": "Commit & Create PR",
+      "committing": "Committing...",
+      "commitFailed": "Failed to commit changes"
     },
     "loginRequired": {
       "title": "Sign in to create a pull request",
       "description": "You need to sign in before you can open a pull request for this task. We'll take you to the sign-in page.",
       "action": "Sign in"
+    }
+  },
+  "commitDialog": {
+    "title": "Commit Changes",
+    "description": "Commit your uncommitted changes with a message.",
+    "messageLabel": "Commit message",
+    "messagePlaceholder": "Enter a commit message...",
+    "commitButton": "Commit",
+    "committing": "Committing...",
+    "errors": {
+      "commitFailed": "Failed to commit changes"
     }
   },
   "showcases": {

@@ -785,6 +785,20 @@ export const attemptsApi = {
     return handleApiResponseAsResult<void, PushError>(response);
   },
 
+  commit: async (
+    attemptId: string,
+    data: { message: string; repo_id: string }
+  ): Promise<Result<boolean, void>> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commit`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponseAsResult<boolean, void>(response);
+  },
+
   rebase: async (
     attemptId: string,
     data: RebaseTaskAttemptRequest

@@ -27,6 +27,7 @@ import {
   SpinnerIcon,
   GitPullRequestIcon,
   GitMergeIcon,
+  GitCommitIcon,
   ArrowsClockwiseIcon,
   CrosshairIcon,
   DesktopIcon,
@@ -915,6 +916,24 @@ export const Actions = {
         }
         throw new Error('Failed to push changes');
       }
+      invalidateWorkspaceQueries(ctx.queryClient, workspaceId);
+    },
+  },
+
+  GitCommit: {
+    id: 'git-commit',
+    label: 'Commit Changes',
+    icon: GitCommitIcon,
+    requiresTarget: 'git',
+    isVisible: (ctx) => ctx.hasWorkspace && ctx.hasGitRepos,
+    execute: async (ctx, workspaceId, repoId) => {
+      const { CommitDialog } = await import(
+        '@/components/dialogs/tasks/CommitDialog'
+      );
+      await CommitDialog.show({
+        workspaceId,
+        repoId,
+      });
       invalidateWorkspaceQueries(ctx.queryClient, workspaceId);
     },
   },

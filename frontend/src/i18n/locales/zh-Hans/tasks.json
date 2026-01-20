@@ -295,6 +295,8 @@
     "branch": {
       "current": "当前"
     },
+    "uncommitted_one": "{{count}} 个未提交的更改",
+    "uncommitted_other": "{{count}} 个未提交的更改",
     "forcePushDialog": {
       "title": "需要强制推送",
       "description": "远程分支{{branchLabel}}已与您的本地分支分离。常规推送被拒绝。",
@@ -475,12 +477,34 @@
       "failedToCreate": "创建 PR 失败",
       "gitCliNotLoggedIn": "Git 未通过身份验证。运行 gh auth login（或配置 Git 凭据）然后重试。",
       "gitCliNotInstalled": "未安装 Git CLI。安装 Git 以创建 PR。",
-      "targetBranchNotFound": "远程上不存在目标分支 {{branch}}。请在创建拉取请求之前确保该分支存在。"
+      "targetBranchNotFound": "远程上不存在目标分支 {{branch}}。请在创建拉取请求之前确保该分支存在。",
+      "uncommittedChanges": "有未提交的更改。请先使用 Git 面板提交您的更改。"
+    },
+    "uncommittedChanges": {
+      "title": "检测到未提交的更改",
+      "description": "以下文件有未提交的更改，需要在创建 PR 之前提交：",
+      "messageLabel": "提交消息",
+      "messagePlaceholder": "输入提交消息...",
+      "commitOnly": "提交",
+      "commitAndCreatePr": "提交并创建 PR",
+      "committing": "提交中...",
+      "commitFailed": "提交更改失败"
     },
     "loginRequired": {
       "title": "登录以创建拉取请求",
       "description": "您需要登录才能为此任务打开拉取请求。我们将带您到登录页面。",
       "action": "登录"
+    }
+  },
+  "commitDialog": {
+    "title": "提交更改",
+    "description": "使用消息提交您的未提交更改。",
+    "messageLabel": "提交消息",
+    "messagePlaceholder": "输入提交消息...",
+    "commitButton": "提交",
+    "committing": "提交中...",
+    "errors": {
+      "commitFailed": "提交更改失败"
     }
   },
   "showcases": {
