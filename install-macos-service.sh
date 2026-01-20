@@ -64,48 +64,30 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --force     Force reinstall (recreates plist even if service exists)"
             echo "  --no-mcp    Skip installing the MCP server binary"
-            echo "  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)"
+            echo "  --tailscale-funnel  Enable Tailscale Funnel setup (or use TAILSCALE_FUNNEL=1 in .env)"
             echo "  --help      Show this help message"
             echo ""
-            echo "The script automatically reads from .env in the project directory."
+            echo "Configuration is done via .env file. Copy .env.example to .env and edit:"
+            echo "  cp .env.example .env"
             echo ""
-            echo "Required environment variables (in .env or set inline):"
+            echo "Required variables (in .env):"
             echo "  VK_PUBLIC_BASE_URL      Public URL where the service is accessible"
             echo "  VK_ANTHROPIC_API_KEY    Anthropic API key for AI features"
             echo "  GOOGLE_CLIENT_ID        Google OAuth client ID"
             echo "  GOOGLE_CLIENT_SECRET    Google OAuth client secret"
             echo ""
-            echo "Optional environment variables:"
-            echo "  PORT        Server port (default: 3000)"
-            echo "  HOST        Server host (default: 0.0.0.0; auto: 127.0.0.1 when enabling Funnel)"
-            echo "  TAILSCALE_FUNNEL  If set (1/true/yes), enable Tailscale Funnel setup (public URL)"
+            echo "Optional variables (in .env):"
+            echo "  PORT              Server port (default: 3000)"
+            echo "  HOST              Server host (default: 0.0.0.0; auto: 127.0.0.1 with Funnel)"
+            echo "  TAILSCALE_FUNNEL  Set to 1 to enable Tailscale Funnel for public HTTPS"
             echo ""
             echo "Example:"
             echo "  sudo ./install-macos-service.sh"
-            echo "  PORT=8080 sudo ./install-macos-service.sh --force"
+            echo "  sudo ./install-macos-service.sh --force"
             exit 0
             ;;
     esac
 done
-
-# Determine whether HOST was explicitly set by caller
-HOST_WAS_SET=false
-if [ -n "${HOST+x}" ]; then
-    HOST_WAS_SET=true
-fi
-
-# Read environment variables
-PORT="${PORT:-3000}"
-if is_truthy "${TAILSCALE_FUNNEL:-}"; then
-    ENABLE_TAILSCALE_FUNNEL=true
-fi
-
-# When enabling Funnel, default HOST to loopback unless explicitly provided.
-DEFAULT_HOST="0.0.0.0"
-if [ "$ENABLE_TAILSCALE_FUNNEL" = true ] && [ "$HOST_WAS_SET" = false ]; then
-    DEFAULT_HOST="127.0.0.1"
-fi
-HOST="${HOST:-$DEFAULT_HOST}"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
@@ -116,7 +98,8 @@ fi
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Load .env file if it exists (handles sudo not preserving environment)
+# Load .env file FIRST (before checking environment variables)
+# This ensures .env values are available for HOST/PORT/TAILSCALE_FUNNEL defaults
 ENV_FILE="${SCRIPT_DIR:-.}/.env"
 if [ -f "$ENV_FILE" ]; then
     echo -e "${CYAN}Loading environment from .env file...${NC}"
@@ -137,6 +120,25 @@ if [ -f "$ENV_FILE" ]; then
         fi
     done < "$ENV_FILE"
 fi
+
+# Determine whether HOST was explicitly set by caller (after .env loading)
+HOST_WAS_SET=false
+if [ -n "${HOST+x}" ]; then
+    HOST_WAS_SET=true
+fi
+
+# Read environment variables (now .env values are available)
+PORT="${PORT:-3000}"
+if is_truthy "${TAILSCALE_FUNNEL:-}"; then
+    ENABLE_TAILSCALE_FUNNEL=true
+fi
+
+# When enabling Funnel, default HOST to loopback unless explicitly provided.
+DEFAULT_HOST="0.0.0.0"
+if [ "$ENABLE_TAILSCALE_FUNNEL" = true ] && [ "$HOST_WAS_SET" = false ]; then
+    DEFAULT_HOST="127.0.0.1"
+fi
+HOST="${HOST:-$DEFAULT_HOST}"
 
 # Required environment variables
 REQUIRED_VARS=(

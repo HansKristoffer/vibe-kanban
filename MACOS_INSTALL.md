@@ -71,9 +71,7 @@ The script automatically:
 
 ### Custom Port
 
-```bash
-PORT=8080 sudo ./install-macos-service.sh
-```
+Set `PORT=8080` in your `.env` file, then run the install script.
 
 ---
 
@@ -140,12 +138,18 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 
 ### Change Port or Host
 
-Option 1: Set during install
-```bash
-PORT=8080 HOST=0.0.0.0 sudo ./install-macos-service.sh --force
-```
+1. Edit your `.env` file:
+   ```
+   PORT=8080
+   HOST=0.0.0.0
+   ```
 
-Option 2: Edit plist directly
+2. Reinstall to apply changes:
+   ```bash
+   sudo ./install-macos-service.sh --force
+   ```
+
+Alternatively, edit the plist directly:
 ```bash
 sudo nano /Library/LaunchDaemons/com.vibekanban.server.plist
 # Then restart:
@@ -154,6 +158,13 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 ```
 
 ### Environment Variables
+
+All configuration is done via the `.env` file. Copy the example and edit:
+
+```bash
+cp .env.example .env
+nano .env  # or your preferred editor
+```
 
 **Required:**
 
@@ -169,7 +180,8 @@ sudo launchctl load /Library/LaunchDaemons/com.vibekanban.server.plist
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | Server port |
-| `HOST` | `0.0.0.0` | Server host |
+| `HOST` | `0.0.0.0` | Server host (defaults to `127.0.0.1` when `TAILSCALE_FUNNEL=1`) |
+| `TAILSCALE_FUNNEL` | - | Set to `1` to enable Tailscale Funnel for public HTTPS access |
 | `RUST_LOG` | `info` | Log level |
 
 ---
@@ -209,8 +221,8 @@ cat /var/vibe-kanban/vibe-kanban.error.log
 # Find what's using the port
 lsof -i :3000
 
-# Reinstall with different port
-PORT=8080 sudo ./install-macos-service.sh --force
+# Change PORT in .env, then reinstall
+sudo ./install-macos-service.sh --force
 ```
 
 ### Permission issues
@@ -230,20 +242,11 @@ sudo ./install-macos-service.sh [OPTIONS]
 Options:
   --force     Force reinstall (recreates service config)
   --no-mcp    Skip MCP binary installation
-  --tailscale-funnel  Enable Tailscale Funnel setup (public URL)
+  --tailscale-funnel  Enable Tailscale Funnel (or use TAILSCALE_FUNNEL=1 in .env)
   --help      Show help
 ```
 
-The script automatically reads from `.env` in the project directory.
-
-**Required environment variables** (in `.env` or set inline):
-
-| Variable | Description |
-|----------|-------------|
-| `VK_PUBLIC_BASE_URL` | Public URL where the service is accessible |
-| `VK_ANTHROPIC_API_KEY` | Anthropic API key for AI features |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+The script automatically reads from `.env` in the project directory. See `.env.example` for all available variables.
 
 ---
 
@@ -251,18 +254,29 @@ The script automatically reads from `.env` in the project directory.
 
 ### Public HTTPS (Tailscale Funnel)
 
-If you want a public HTTPS URL via Tailscale Funnel (recommended over binding directly to a public interface):
+Tailscale Funnel provides a public HTTPS URL without port forwarding (recommended).
 
-```bash
-HOST=127.0.0.1 PORT=3000 TAILSCALE_FUNNEL=1 sudo ./install-macos-service.sh --force
-```
+1. Add to your `.env`:
+   ```
+   TAILSCALE_FUNNEL=1
+   VK_PUBLIC_BASE_URL=https://your-machine.your-tailnet.ts.net
+   ```
 
-Requirements:
+2. Install/reinstall the service:
+   ```bash
+   sudo ./install-macos-service.sh --force
+   ```
+
+The script will automatically:
+- Set `HOST=127.0.0.1` (localhost only, Funnel handles external traffic)
+- Configure Tailscale Funnel to expose the service
+
+**Requirements:**
 - Tailscale is installed and connected (`tailscale up`)
 - Your tailnet allows Funnel for this node (ACL/nodeAttrs)
 - MagicDNS/HTTPS enabled for your tailnet
 
-Get the URL / verify status:
+**Get the URL / verify status:**
 
 ```bash
 sudo tailscale funnel status
