@@ -418,10 +418,10 @@ if [ "$HEALTH_OK" = true ]; then
         elif ! tailscale funnel --help >/dev/null 2>&1; then
             echo -e "${YELLOW}Warning: Your Tailscale version does not support Funnel. Skipping Funnel setup.${NC}"
             echo "Upgrade Tailscale and then run: sudo tailscale funnel --bg --yes ${PORT}"
-        elif ! tailscale funnel --help 2>/dev/null | grep -q -- '--bg'; then
+        elif ! tailscale funnel --help 2>&1 | grep -q -- '--bg'; then
             echo -e "${YELLOW}Warning: Your Tailscale CLI does not support --bg for Funnel. Skipping Funnel setup.${NC}"
             echo "Run manually from a terminal: sudo tailscale funnel ${PORT}"
-        elif ! tailscale funnel --help 2>/dev/null | grep -q -- '--yes'; then
+        elif ! tailscale funnel --help 2>&1 | grep -q -- '--yes'; then
             echo -e "${YELLOW}Warning: Your Tailscale CLI does not support non-interactive Funnel setup (--yes). Skipping Funnel setup.${NC}"
             echo "Run manually from a terminal: sudo tailscale funnel ${PORT}"
         else
