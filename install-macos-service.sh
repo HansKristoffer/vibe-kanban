@@ -320,26 +320,18 @@ if [ "$SKIP_DEPS" = false ]; then
     echo ""
     echo -e "${CYAN}Setting up project dependencies...${NC}"
 
-    # Run pnpm install if node_modules doesn't exist or package.json is newer
-    if [ ! -d "${SCRIPT_DIR}/node_modules" ] || [ "${SCRIPT_DIR}/package.json" -nt "${SCRIPT_DIR}/node_modules" ]; then
-        echo -e "${YELLOW}Installing npm dependencies with pnpm...${NC}"
-        cd "$SCRIPT_DIR"
-        run_as_user pnpm install
-        echo -e "${GREEN}Dependencies installed successfully.${NC}"
-    else
-        echo -e "${GREEN}✓ npm dependencies are up to date${NC}"
-    fi
+    # Always run pnpm install to ensure dependencies are up to date
+    # (pnpm is fast when nothing changed)
+    echo -e "${YELLOW}Installing/updating npm dependencies with pnpm...${NC}"
+    cd "$SCRIPT_DIR"
+    run_as_user pnpm install
+    echo -e "${GREEN}Dependencies installed successfully.${NC}"
 
-    # Generate TypeScript types if needed
-    TYPES_FILE="${SCRIPT_DIR}/shared/types.ts"
-    if [ ! -f "$TYPES_FILE" ]; then
-        echo -e "${YELLOW}Generating TypeScript types...${NC}"
-        cd "$SCRIPT_DIR"
-        run_as_user pnpm run generate-types
-        echo -e "${GREEN}Types generated successfully.${NC}"
-    else
-        echo -e "${GREEN}✓ TypeScript types exist${NC}"
-    fi
+    # Always regenerate TypeScript types to ensure they match current Rust code
+    echo -e "${YELLOW}Generating TypeScript types...${NC}"
+    cd "$SCRIPT_DIR"
+    run_as_user pnpm run generate-types
+    echo -e "${GREEN}Types generated successfully.${NC}"
 
     echo ""
     echo -e "${GREEN}All dependencies are ready!${NC}"
