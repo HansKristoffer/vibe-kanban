@@ -773,27 +773,22 @@ Analyze the changes in this branch and write:
    - At the end, include a note: "This PR was written using [Vibe Kanban](https://vibekanban.com)"
 
 Use the appropriate CLI tool to update the PR (gh pr edit for GitHub, az repos pr update for Azure DevOps).`;
-export const DEFAULT_INBOX_PRD_TEMPLATE = `## Problem Statement
-The problem that the user is facing, from the user's perspective.
+export const DEFAULT_INBOX_PRD_TEMPLATE = `## Problem
+What issue or need is being addressed?
 
 ## Solution
-The solution to the problem, from the user's perspective.
+How will this be solved? Describe the approach briefly.
 
-## User Stories
-A numbered list of user stories in the format:
-1. As an <actor>, I want a <feature>, so that <benefit>
+## Requirements
+What needs to be true when this is complete? List as bullet points:
+- Requirement 1
+- Requirement 2
 
-Include all relevant user stories that cover the feature comprehensively.
+## Example (optional)
+A brief example of expected behavior.
 
-## Implementation Decisions
-Key implementation considerations including:
-- Technical clarifications
-- Architectural decisions
-- Schema changes (if applicable)
-- API contracts (if applicable)
-- Specific interactions
+## Context (optional)
+Where this fits in the existing system or related features.
 
-Do NOT include specific file paths or code snippets.
-
-## Further Notes
-Any additional context or considerations.`;
+## Technical Notes (optional)
+Any relevant technical context for implementation.`;

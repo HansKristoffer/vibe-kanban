@@ -6,30 +6,25 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::time::{sleep, Duration};
 
-pub const DEFAULT_INBOX_PRD_TEMPLATE: &str = r#"## Problem Statement
-The problem that the user is facing, from the user's perspective.
+pub const DEFAULT_INBOX_PRD_TEMPLATE: &str = r#"## Problem
+What issue or need is being addressed?
 
 ## Solution
-The solution to the problem, from the user's perspective.
+How will this be solved? Describe the approach briefly.
 
-## User Stories
-A numbered list of user stories in the format:
-1. As an <actor>, I want a <feature>, so that <benefit>
+## Requirements
+What needs to be true when this is complete? List as bullet points:
+- Requirement 1
+- Requirement 2
 
-Include all relevant user stories that cover the feature comprehensively.
+## Example (optional)
+A brief example of expected behavior.
 
-## Implementation Decisions
-Key implementation considerations including:
-- Technical clarifications
-- Architectural decisions
-- Schema changes (if applicable)
-- API contracts (if applicable)
-- Specific interactions
+## Context (optional)
+Where this fits in the existing system or related features.
 
-Do NOT include specific file paths or code snippets.
-
-## Further Notes
-Any additional context or considerations."#;
+## Technical Notes (optional)
+Any relevant technical context for implementation."#;
 
 #[derive(Debug, Error)]
 pub enum AnthropicError {
@@ -135,10 +130,9 @@ Rules:
 {}
 
 Guidelines for the PRD:
-- Be thorough and specific
+- Be clear and concise
 - Write for a coding LLM that will implement this feature
-- Include edge cases and error handling considerations
-- Make user stories extensive and cover all aspects
+- Focus on what needs to be built, not how
 
 Input:
 {}"#,
