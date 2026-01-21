@@ -26,9 +26,9 @@ use services::services::posthog_sentry_enrichment::{
 };
 use services::services::container::ContainerService;
 use services::services::slack::{
-    self, build_prd_blocks_json, build_accept_modal_json,
-    build_task_accepted_message_json, get_task_accepted_text, get_vk_task_url,
-    PrdMessageStatus, SlackClient,
+    self, build_prd_compact_blocks_json, build_prd_thread_blocks_json,
+    build_accept_modal_json, build_task_accepted_message_json, get_task_accepted_text,
+    get_vk_task_url, PrdMessageStatus, SlackClient,
 };
 use utils::response::ApiResponse;
 
@@ -205,16 +205,18 @@ async fn post_prd_to_slack_if_configured(
     let source_str = format!("{:?}", item.source).to_lowercase();
     let prd = item.prd_markdown.as_deref().unwrap_or("");
     
-    let blocks = build_prd_blocks_json(
+    // Build compact blocks for the main channel message
+    // No creator for non-Slack sources
+    let compact_blocks = build_prd_compact_blocks_json(
         &item.title,
         &kind_str,
         &source_str,
-        prd,
         &item.id.to_string(),
         PrdMessageStatus::Pending,
+        None,
     );
 
-    match client.post_message_json(channel_id, &item.title, blocks, None).await {
+    match client.post_message_json(channel_id, &item.title, compact_blocks, None).await {
         Ok(result) => {
             // Store the Slack message reference
             if let Err(e) = InboxItem::set_slack_message(
@@ -226,6 +228,31 @@ async fn post_prd_to_slack_if_configured(
                 warn!("Failed to store Slack message reference: {}", e);
             } else {
                 info!("Posted PRD to Slack: {} (ts: {})", item.title, result.ts);
+            }
+            
+            // Post the full PRD content as a thread reply
+            let prd_blocks = build_prd_thread_blocks_json(prd);
+            match client.post_message_json(
+                channel_id,
+                "PRD Details",
+                prd_blocks,
+                Some(&result.ts),
+            ).await {
+                Ok(thread_result) => {
+                    // Store the thread reply ts for future updates
+                    if let Err(e) = InboxItem::set_slack_prd_thread_ts(
+                        &deployment.db().pool,
+                        item.id,
+                        &thread_result.ts,
+                    ).await {
+                        warn!("Failed to store PRD thread ts: {}", e);
+                    } else {
+                        info!("Posted PRD thread reply for: {} (ts: {})", item.title, thread_result.ts);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to post PRD thread reply: {}", e);
+                }
             }
         }
         Err(e) => {
@@ -958,22 +985,31 @@ async fn process_slack_command_async(
         }
     };
 
+    // Store the Slack user who created this inbox item
+    if let Err(e) = InboxItem::set_slack_created_by(
+        &deployment.db().pool,
+        item.id,
+        &user_id,
+    ).await {
+        warn!("Failed to store Slack creator: {}", e);
+    }
+
     // Post PRD to Slack channel with user mention
     if let Some(bot_token) = bot_token.as_ref() {
         let client = SlackClient::new(bot_token);
-        let blocks = build_prd_blocks_json(
+        let compact_blocks = build_prd_compact_blocks_json(
             &title,
             &format!("{:?}", kind).to_lowercase(),
             "slack",
-            &prd_markdown,
             &item.id.to_string(),
             PrdMessageStatus::Pending,
+            Some(&user_id),
         );
 
         // Include user mention in the message text (shows in notifications and as fallback)
         let message_text = format!("<@{}> created: {}", user_id, title);
 
-        match client.post_message_json(&channel_id, &message_text, blocks, None).await {
+        match client.post_message_json(&channel_id, &message_text, compact_blocks, None).await {
             Ok(result) => {
                 // Store the Slack message reference
                 if let Err(e) = InboxItem::set_slack_message(
@@ -985,6 +1021,29 @@ async fn process_slack_command_async(
                     warn!("Failed to store Slack message reference: {}", e);
                 }
                 info!("Posted PRD to Slack channel {} for user {}", channel_id, user_id);
+                
+                // Post the full PRD content as a thread reply
+                let prd_blocks = build_prd_thread_blocks_json(&prd_markdown);
+                match client.post_message_json(
+                    &channel_id,
+                    "PRD Details",
+                    prd_blocks,
+                    Some(&result.ts),
+                ).await {
+                    Ok(thread_result) => {
+                        // Store the thread reply ts for future updates
+                        if let Err(e) = InboxItem::set_slack_prd_thread_ts(
+                            &deployment.db().pool,
+                            item.id,
+                            &thread_result.ts,
+                        ).await {
+                            warn!("Failed to store PRD thread ts: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to post PRD thread reply: {}", e);
+                    }
+                }
             }
             Err(e) => {
                 warn!("Failed to post PRD to Slack: {}", e);
@@ -1425,14 +1484,14 @@ async fn handle_accept_modal_submission(
                 warn!("Failed to post Slack channel notification: {}", e);
             }
 
-            // Update original message to show accepted status
-            let blocks = build_prd_blocks_json(
+            // Update original message to show accepted status (compact, PRD is in thread)
+            let blocks = build_prd_compact_blocks_json(
                 &item.title,
                 &format!("{:?}", item.kind).to_lowercase(),
                 &format!("{:?}", item.source).to_lowercase(),
-                item.prd_markdown.as_deref().unwrap_or(""),
                 &item.id.to_string(),
                 PrdMessageStatus::Accepted,
+                item.slack_created_by_user_id.as_deref(),
             );
             if let Err(e) = client.update_message_json(channel_id, ts, &format!("[Accepted] {}", item.title), blocks).await {
                 warn!("Failed to update Slack message: {}", e);
@@ -1508,17 +1567,51 @@ async fn handle_update_modal_submission(
         
         if let (Some(channel_id), Some(ts)) = (item.slack_channel_id.as_ref(), item.slack_message_ts.as_ref()) {
             info!("Updating Slack message: channel={}, ts={}", channel_id, ts);
-            let blocks = build_prd_blocks_json(
+            // Update main message with compact blocks (PRD is in thread)
+            let blocks = build_prd_compact_blocks_json(
                 &updated_item.title,
                 &format!("{:?}", updated_item.kind).to_lowercase(),
                 &format!("{:?}", updated_item.source).to_lowercase(),
-                updated_item.prd_markdown.as_deref().unwrap_or(""),
                 &updated_item.id.to_string(),
                 PrdMessageStatus::Pending,
+                updated_item.slack_created_by_user_id.as_deref(),
             );
             match client.update_message_json(channel_id, ts, &updated_item.title, blocks).await {
                 Ok(_) => info!("Successfully updated Slack message"),
                 Err(e) => warn!("Failed to update Slack message: {}", e),
+            }
+            
+            // Update the PRD thread reply in place (or create new if doesn't exist)
+            let prd_blocks = build_prd_thread_blocks_json(updated_item.prd_markdown.as_deref().unwrap_or(""));
+            if let Some(thread_ts) = updated_item.slack_prd_thread_ts.as_ref() {
+                // Update existing thread message
+                match client.update_message_json(channel_id, thread_ts, "PRD Details", prd_blocks).await {
+                    Ok(_) => info!("Successfully updated PRD thread reply"),
+                    Err(e) => warn!("Failed to update PRD thread reply: {}", e),
+                }
+            } else {
+                // No existing thread, post a new one and store its ts
+                match client.post_message_json(
+                    channel_id,
+                    "PRD Details",
+                    prd_blocks,
+                    Some(ts),
+                ).await {
+                    Ok(thread_result) => {
+                        if let Err(e) = InboxItem::set_slack_prd_thread_ts(
+                            &deployment.db().pool,
+                            updated_item.id,
+                            &thread_result.ts,
+                        ).await {
+                            warn!("Failed to store PRD thread ts: {}", e);
+                        } else {
+                            info!("Posted new PRD thread reply (ts: {})", thread_result.ts);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to post PRD thread reply: {}", e);
+                    }
+                }
             }
         } else {
             warn!("Cannot update Slack message: channel_id={:?}, ts={:?}", item.slack_channel_id, item.slack_message_ts);
@@ -1686,14 +1779,14 @@ pub async fn personal_ai_quick(
         let client = SlackClient::new(bot_token);
         let kind_str = format!("{:?}", kind).to_lowercase();
 
-        // Build blocks with Accepted status (no buttons)
-        let blocks = build_prd_blocks_json(
+        // Build compact blocks with Accepted status (no buttons, PRD in thread)
+        let compact_blocks = build_prd_compact_blocks_json(
             &title,
             &kind_str,
             "personal-ai",
-            &prd_markdown,
             &item.id.to_string(),
             PrdMessageStatus::Accepted,
+            payload.slack_user_id.as_deref(),
         );
 
         // Include user mention if provided
@@ -1703,7 +1796,7 @@ pub async fn personal_ai_quick(
             format!("[Auto-accepted] {}", title)
         };
 
-        match client.post_message_json(channel_id, &message_text, blocks, None).await {
+        match client.post_message_json(channel_id, &message_text, compact_blocks, None).await {
             Ok(result) => {
                 slack_posted = true;
                 slack_channel_id = Some(result.channel.clone());
@@ -1714,6 +1807,25 @@ pub async fn personal_ai_quick(
                     warn!("Failed to store Slack message reference: {}", e);
                 }
                 info!("Posted PRD to Slack for personal-ai quick: {} (ts: {})", title, result.ts);
+                
+                // Post the full PRD content as a thread reply
+                let prd_blocks = build_prd_thread_blocks_json(&prd_markdown);
+                match client.post_message_json(
+                    channel_id,
+                    "PRD Details",
+                    prd_blocks,
+                    Some(&result.ts),
+                ).await {
+                    Ok(thread_result) => {
+                        // Store the thread reply ts for future updates
+                        if let Err(e) = InboxItem::set_slack_prd_thread_ts(pool, item.id, &thread_result.ts).await {
+                            warn!("Failed to store PRD thread ts: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to post PRD thread reply: {}", e);
+                    }
+                }
             }
             Err(e) => {
                 warn!("Failed to post PRD to Slack (best-effort): {}", e);

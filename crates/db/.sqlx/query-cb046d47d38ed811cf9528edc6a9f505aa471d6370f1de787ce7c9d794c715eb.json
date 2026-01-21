@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      source as \"source!: InboxSource\",\n                      source_item_id,\n                      source_url,\n                      title,\n                      raw_payload_json,\n                      kind as \"kind!: InboxItemKind\",\n                      status as \"status!: InboxItemStatus\",\n                      prd_markdown,\n                      task_id as \"task_id: Uuid\",\n                      linear_issue_id,\n                      linear_issue_url,\n                      action_token,\n                      slack_channel_id,\n                      slack_message_ts,\n                      slack_accepted_by_user_id,\n                      outbound_registered_at as \"outbound_registered_at: DateTime<Utc>\",\n                      outbound_started_at as \"outbound_started_at: DateTime<Utc>\",\n                      outbound_pr_created_at as \"outbound_pr_created_at: DateTime<Utc>\",\n                      outbound_pr_merged_at as \"outbound_pr_merged_at: DateTime<Utc>\",\n                      outbound_last_error,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM inbox_items\n               WHERE slack_channel_id = $1 AND slack_message_ts = $2\n               LIMIT 1",
+  "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      source as \"source!: InboxSource\",\n                      source_item_id,\n                      source_url,\n                      title,\n                      raw_payload_json,\n                      kind as \"kind!: InboxItemKind\",\n                      status as \"status!: InboxItemStatus\",\n                      prd_markdown,\n                      task_id as \"task_id: Uuid\",\n                      linear_issue_id,\n                      linear_issue_url,\n                      action_token,\n                      slack_channel_id,\n                      slack_message_ts,\n                      slack_prd_thread_ts,\n                      slack_accepted_by_user_id,\n                      slack_created_by_user_id,\n                      outbound_registered_at as \"outbound_registered_at: DateTime<Utc>\",\n                      outbound_started_at as \"outbound_started_at: DateTime<Utc>\",\n                      outbound_pr_created_at as \"outbound_pr_created_at: DateTime<Utc>\",\n                      outbound_pr_merged_at as \"outbound_pr_merged_at: DateTime<Utc>\",\n                      outbound_last_error,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM inbox_items\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -84,48 +84,58 @@
         "type_info": "Text"
       },
       {
-        "name": "slack_accepted_by_user_id",
+        "name": "slack_prd_thread_ts",
         "ordinal": 16,
         "type_info": "Text"
       },
       {
-        "name": "outbound_registered_at: DateTime<Utc>",
+        "name": "slack_accepted_by_user_id",
         "ordinal": 17,
         "type_info": "Text"
       },
       {
-        "name": "outbound_started_at: DateTime<Utc>",
+        "name": "slack_created_by_user_id",
         "ordinal": 18,
         "type_info": "Text"
       },
       {
-        "name": "outbound_pr_created_at: DateTime<Utc>",
+        "name": "outbound_registered_at: DateTime<Utc>",
         "ordinal": 19,
         "type_info": "Text"
       },
       {
-        "name": "outbound_pr_merged_at: DateTime<Utc>",
+        "name": "outbound_started_at: DateTime<Utc>",
         "ordinal": 20,
         "type_info": "Text"
       },
       {
-        "name": "outbound_last_error",
+        "name": "outbound_pr_created_at: DateTime<Utc>",
         "ordinal": 21,
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
+        "name": "outbound_pr_merged_at: DateTime<Utc>",
         "ordinal": 22,
         "type_info": "Text"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
+        "name": "outbound_last_error",
         "ordinal": 23,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 24,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 25,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true,
@@ -150,9 +160,11 @@
       true,
       true,
       true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "5015b93b7295c25c899b0e3a57d065c438300f50b2bd8a703088d04f8af6ff7b"
+  "hash": "cb046d47d38ed811cf9528edc6a9f505aa471d6370f1de787ce7c9d794c715eb"
 }

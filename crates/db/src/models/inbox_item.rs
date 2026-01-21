@@ -54,7 +54,9 @@ pub struct InboxItem {
     pub action_token: String,
     pub slack_channel_id: Option<String>,
     pub slack_message_ts: Option<String>,
+    pub slack_prd_thread_ts: Option<String>,
     pub slack_accepted_by_user_id: Option<String>,
+    pub slack_created_by_user_id: Option<String>,
     #[ts(type = "Date")]
     pub outbound_registered_at: Option<DateTime<Utc>>,
     #[ts(type = "Date")]
@@ -137,7 +139,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -175,7 +179,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -213,7 +219,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -254,7 +262,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -297,7 +307,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -355,7 +367,9 @@ impl InboxItem {
                           action_token,
                           slack_channel_id,
                           slack_message_ts,
+                          slack_prd_thread_ts,
                           slack_accepted_by_user_id,
+                          slack_created_by_user_id,
                           outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                           outbound_started_at as "outbound_started_at: DateTime<Utc>",
                           outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -431,7 +445,9 @@ impl InboxItem {
                           action_token,
                           slack_channel_id,
                           slack_message_ts,
+                          slack_prd_thread_ts,
                           slack_accepted_by_user_id,
+                          slack_created_by_user_id,
                           outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                           outbound_started_at as "outbound_started_at: DateTime<Utc>",
                           outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -507,7 +523,9 @@ impl InboxItem {
                          action_token,
                          slack_channel_id,
                          slack_message_ts,
+                         slack_prd_thread_ts,
                          slack_accepted_by_user_id,
+                         slack_created_by_user_id,
                          outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                          outbound_started_at as "outbound_started_at: DateTime<Utc>",
                          outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",
@@ -652,6 +670,44 @@ impl InboxItem {
         Ok(())
     }
 
+    /// Set the Slack user who created the inbox item via /vibe command
+    pub async fn set_slack_created_by(
+        pool: &SqlitePool,
+        id: Uuid,
+        user_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE inbox_items
+               SET slack_created_by_user_id = $2,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $1"#,
+            id,
+            user_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set the Slack PRD thread timestamp (for updating the PRD in place)
+    pub async fn set_slack_prd_thread_ts(
+        pool: &SqlitePool,
+        id: Uuid,
+        thread_ts: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE inbox_items
+               SET slack_prd_thread_ts = $2,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $1"#,
+            id,
+            thread_ts
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// Find an inbox item by Slack message timestamp
     pub async fn find_by_slack_message_ts(
         pool: &SqlitePool,
@@ -676,7 +732,9 @@ impl InboxItem {
                       action_token,
                       slack_channel_id,
                       slack_message_ts,
+                      slack_prd_thread_ts,
                       slack_accepted_by_user_id,
+                      slack_created_by_user_id,
                       outbound_registered_at as "outbound_registered_at: DateTime<Utc>",
                       outbound_started_at as "outbound_started_at: DateTime<Utc>",
                       outbound_pr_created_at as "outbound_pr_created_at: DateTime<Utc>",

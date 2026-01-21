@@ -580,6 +580,7 @@ pub fn build_prd_blocks(
     prd_markdown: &str,
     inbox_item_id: &str,
     status: PrdMessageStatus,
+    created_by_user_id: Option<&str>,
 ) -> Vec<SlackBlock> {
     let status_emoji = match status {
         PrdMessageStatus::Pending => ":inbox_tray:",
@@ -611,6 +612,12 @@ pub fn build_prd_blocks(
         }
     };
 
+    // Build context text with optional creator
+    let created_by = created_by_user_id
+        .map(|id| format!(" | *Created by:* <@{}>", id))
+        .unwrap_or_default();
+    let context_text = format!("*Source:* {} | *Type:* {} | *Status:* {}{}", source, kind, status_str, created_by);
+
     let mut blocks = vec![
         // Header
         SlackBlock {
@@ -632,7 +639,7 @@ pub fn build_prd_blocks(
                 element_type: "mrkdwn".to_string(),
                 text: Some(SlackTextObject {
                     text_type: "mrkdwn".to_string(),
-                    text: format!("*Source:* {} | *Type:* {} | *Status:* {}", source, kind, status_str),
+                    text: context_text,
                     emoji: None,
                 }),
                 action_id: None,
@@ -732,6 +739,7 @@ pub fn build_prd_blocks_json(
     prd_markdown: &str,
     inbox_item_id: &str,
     status: PrdMessageStatus,
+    created_by_user_id: Option<&str>,
 ) -> serde_json::Value {
     let status_emoji = match status {
         PrdMessageStatus::Pending => ":inbox_tray:",
@@ -761,6 +769,12 @@ pub fn build_prd_blocks_json(
         }
     };
 
+    // Build context text with optional creator
+    let created_by = created_by_user_id
+        .map(|id| format!(" | *Created by:* <@{}>", id))
+        .unwrap_or_default();
+    let context_text = format!("*Source:* {} | *Type:* {} | *Status:* {}{}", source, kind, status_str, created_by);
+
     let mut blocks = vec![
         // Header block
         serde_json::json!({
@@ -777,7 +791,7 @@ pub fn build_prd_blocks_json(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": format!("*Source:* {} | *Type:* {} | *Status:* {}", source, kind, status_str)
+                    "text": context_text
                 }
             ]
         }),
@@ -840,6 +854,165 @@ pub fn build_prd_blocks_json(
             ]
         }));
     }
+
+    serde_json::Value::Array(blocks)
+}
+
+/// Build compact PRD blocks for the main channel message.
+/// The full PRD content is posted separately as a thread reply.
+pub fn build_prd_compact_blocks_json(
+    title: &str,
+    kind: &str,
+    source: &str,
+    inbox_item_id: &str,
+    status: PrdMessageStatus,
+    created_by_user_id: Option<&str>,
+) -> serde_json::Value {
+    let status_emoji = match status {
+        PrdMessageStatus::Pending => ":inbox_tray:",
+        PrdMessageStatus::Accepted => ":white_check_mark:",
+        PrdMessageStatus::Declined => ":x:",
+    };
+
+    let status_str = match status {
+        PrdMessageStatus::Pending => "Pending",
+        PrdMessageStatus::Accepted => "Accepted",
+        PrdMessageStatus::Declined => "Declined",
+    };
+
+    // Truncate title for header block (max 150 chars)
+    let header_text = safe_truncate(&format!("{} {}", status_emoji, title), 145);
+
+    // Build context text with optional creator
+    let created_by = created_by_user_id
+        .map(|id| format!(" | *Created by:* <@{}>", id))
+        .unwrap_or_default();
+    let context_text = format!("*Source:* {} | *Type:* {} | *Status:* {}{}", source, kind, status_str, created_by);
+
+    let mut blocks = vec![
+        // Header block
+        serde_json::json!({
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": header_text,
+                "emoji": true
+            }
+        }),
+        // Context block
+        serde_json::json!({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": context_text
+                }
+            ]
+        }),
+        // Divider
+        serde_json::json!({
+            "type": "divider"
+        }),
+        // Short summary pointing to thread
+        serde_json::json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "_View full PRD in thread below_ :thread:"
+            }
+        }),
+        // Divider before actions
+        serde_json::json!({
+            "type": "divider"
+        }),
+    ];
+
+    // Action buttons (only for pending status)
+    if matches!(status, PrdMessageStatus::Pending) {
+        blocks.push(serde_json::json!({
+            "type": "actions",
+            "block_id": "prd_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Accept",
+                        "emoji": true
+                    },
+                    "action_id": "prd_accept",
+                    "value": inbox_item_id,
+                    "style": "primary"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Update",
+                        "emoji": true
+                    },
+                    "action_id": "prd_update",
+                    "value": inbox_item_id
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Decline",
+                        "emoji": true
+                    },
+                    "action_id": "prd_decline",
+                    "value": inbox_item_id,
+                    "style": "danger"
+                }
+            ]
+        }));
+    }
+
+    serde_json::Value::Array(blocks)
+}
+
+/// Build PRD content blocks for the thread reply.
+/// This contains the full PRD markdown content.
+pub fn build_prd_thread_blocks_json(prd_markdown: &str) -> serde_json::Value {
+    let prd_content = prd_markdown.trim();
+    
+    // Slack section blocks have a 3000 char limit, so we may need to split into multiple sections
+    let prd_text = if prd_content.is_empty() {
+        "_No description provided_".to_string()
+    } else {
+        // Truncate to fit Slack's limit (leave room for potential suffix)
+        let truncated = safe_truncate(prd_content, 2900);
+        if truncated.len() < prd_content.len() {
+            format!("{}...\n\n_[PRD truncated due to length]_", truncated)
+        } else {
+            truncated
+        }
+    };
+
+    let blocks = vec![
+        // Header
+        serde_json::json!({
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": ":page_facing_up: Product Requirements Document",
+                "emoji": true
+            }
+        }),
+        // Divider
+        serde_json::json!({
+            "type": "divider"
+        }),
+        // PRD content
+        serde_json::json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": prd_text
+            }
+        }),
+    ];
 
     serde_json::Value::Array(blocks)
 }
@@ -1476,6 +1649,7 @@ mod tests {
             "# Test\n\nThis is a test PRD.",
             "123e4567-e89b-12d3-a456-426614174000",
             PrdMessageStatus::Pending,
+            Some("U12345678"),
         );
 
         assert!(!blocks.is_empty());

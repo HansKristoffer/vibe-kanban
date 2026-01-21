@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE inbox_items\n               SET slack_prd_thread_ts = $2,\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "830b922bd47779e9b4aa4c27a134d87f938cf42105edcab0fe1505eb2e37cc5b"
+}
