@@ -829,6 +829,20 @@ export const Actions = {
 
       if (confirmResult === 'confirmed') {
         await attemptsApi.merge(workspaceId, { repo_id: repoId });
+
+        // Push the merged changes to remote
+        const pushResult = await attemptsApi.push(workspaceId, {
+          repo_id: repoId,
+        });
+        if (!pushResult.success) {
+          if (pushResult.error?.type === 'force_push_required') {
+            throw new Error(
+              'Force push required. The remote branch has diverged.'
+            );
+          }
+          throw new Error('Failed to push changes after merge');
+        }
+
         invalidateWorkspaceQueries(ctx.queryClient, workspaceId);
       }
     },
