@@ -1515,6 +1515,21 @@ impl ContainerService for LocalContainerService {
             .map(|wr| (wr.repo_id, wr.target_branch.clone()))
             .collect();
 
+        // Fetch latest changes for each repository's target branch
+        for repo in &repositories {
+            if let Some(target_branch) = target_branches.get(&repo.id) {
+                if let Err(e) = self.git.fetch_branch(&repo.path, target_branch) {
+                    tracing::warn!(
+                        "Failed to fetch latest changes for repo '{}' branch '{}': {}. \
+                         Proceeding with local state.",
+                        repo.name,
+                        target_branch,
+                        e
+                    );
+                }
+            }
+        }
+
         let workspace_inputs: Vec<RepoWorkspaceInput> = repositories
             .iter()
             .map(|repo| {

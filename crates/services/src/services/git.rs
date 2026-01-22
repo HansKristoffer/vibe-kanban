@@ -1745,6 +1745,15 @@ impl GitService {
         self.fetch_from_remote(repo, remote, &refspec)
     }
 
+    /// Fetch the latest changes for a branch from its remote.
+    /// Works for both local branches (fetches from upstream) and
+    /// remote-tracking branches (e.g., origin/main).
+    pub fn fetch_branch(&self, repo_path: &Path, branch_name: &str) -> Result<(), GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+        let branch_ref = Self::find_branch(&repo, branch_name)?.into_reference();
+        self.fetch_branch_from_remote(&repo, &branch_ref)
+    }
+
     /// Clone a repository to the specified directory
     #[cfg(feature = "cloud")]
     pub fn clone_repository(
