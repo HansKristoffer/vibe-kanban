@@ -37,6 +37,10 @@ pub struct AnthropicInboxResult {
     pub prd_markdown: String,
     #[serde(default)]
     pub context_links: Vec<String>,
+    /// Whether to recommend using Ralph mode (multi-iteration development)
+    /// for larger tasks that benefit from being split into multiple steps
+    #[serde(default)]
+    pub recommend_ralph: bool,
 }
 
 #[cfg(test)]
@@ -50,5 +54,13 @@ mod tests {
         assert!(parsed.actionable);
         assert!(matches!(parsed.kind, InboxItemKind::Feature));
         assert_eq!(parsed.title, "Add export");
+        assert!(!parsed.recommend_ralph); // defaults to false
+    }
+
+    #[test]
+    fn parses_inbox_result_with_ralph() {
+        let json = r#"{"actionable":true,"kind":"feature","title":"Build auth system","prd_markdown":"Details","context_links":[],"recommend_ralph":true}"#;
+        let parsed: AnthropicInboxResult = serde_json::from_str(json).expect("parse json");
+        assert!(parsed.recommend_ralph);
     }
 }

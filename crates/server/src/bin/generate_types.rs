@@ -145,6 +145,7 @@ fn generate_types_content() -> String {
         server::routes::task_attempts::OpenEditorRequest::decl(),
         server::routes::task_attempts::OpenEditorResponse::decl(),
         server::routes::tasks::CreateAndStartTaskRequest::decl(),
+        server::routes::tasks::WorkItemsResponse::decl(),
         server::routes::project_integrations::ProjectIntegrationsResponse::decl(),
         server::routes::project_integrations::UpdateProjectIntegrationsRequest::decl(),
         server::routes::project_integrations::LinearTeam::decl(),

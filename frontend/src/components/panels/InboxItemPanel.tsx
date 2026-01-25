@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { InboxItem } from 'shared/types';
 import { NewCardContent } from '../ui/new-card';
@@ -17,6 +17,18 @@ import {
   useUpdateInboxItem,
 } from '@/hooks/useProjectInbox';
 import { CreateAttemptDialog } from '@/components/dialogs/tasks/CreateAttemptDialog';
+
+/** Check if PRD generation was requested but not yet completed */
+function isPrdGenerating(item: InboxItem): boolean {
+  if (item.prd_markdown) return false; // PRD already exists
+  if (!item.raw_payload_json) return false;
+  try {
+    const payload = JSON.parse(item.raw_payload_json);
+    return payload.generate_prd === true;
+  } catch {
+    return false;
+  }
+}
 
 interface InboxItemPanelProps {
   item: InboxItem | null;
@@ -129,6 +141,7 @@ const InboxItemPanel = ({ item, onClose }: InboxItemPanelProps) => {
     declineMutation.isPending ||
     updateMutation.isPending;
 
+  const prdGenerating = useMemo(() => isPrdGenerating(item), [item]);
   const titleContent = `# ${item.title || 'Inbox Item'}`;
   const descriptionContent = item.prd_markdown || '';
 
@@ -186,9 +199,14 @@ const InboxItemPanel = ({ item, onClose }: InboxItemPanelProps) => {
           ) : (
             <>
               <WYSIWYGEditor value={titleContent} disabled />
-              {descriptionContent && (
+              {prdGenerating ? (
+                <div className="flex items-center gap-2 p-4 text-muted-foreground bg-muted/50 rounded-md">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Generating PRD...</span>
+                </div>
+              ) : descriptionContent ? (
                 <WYSIWYGEditor value={descriptionContent} disabled />
-              )}
+              ) : null}
             </>
           )}
         </div>

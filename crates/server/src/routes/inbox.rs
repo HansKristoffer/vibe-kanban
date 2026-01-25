@@ -15,7 +15,7 @@ use db::models::project_member::ProjectMember;
 use db::models::project_repo::ProjectRepo;
 use db::models::task::{CreateTask, Task};
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{info, warn};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -54,14 +54,15 @@ pub struct UpdateInboxItemRequest {
     pub prd_markdown: Option<String>,
 }
 
+/// Returns (kind, prd_markdown, actionable, recommend_ralph)
 async fn classify_prd(
     repo_path: &StdPath,
     input: &str,
     prd_template: &str,
-) -> Result<(InboxItemKind, String, bool), ClaudeCodePrdError> {
+) -> Result<(InboxItemKind, String, bool, bool), ClaudeCodePrdError> {
     let result = ClaudeCodePrdService::classify_and_generate_prd(repo_path, input, prd_template)
         .await?;
-    Ok((result.kind, result.prd_markdown, result.actionable))
+    Ok((result.kind, result.prd_markdown, result.actionable, result.recommend_ralph))
 }
 
 pub async fn list_inbox_items(
@@ -118,15 +119,17 @@ pub async fn create_inbox_item(
         .to_string();
     let action_token = Uuid::new_v4().to_string();
     let source_item_id = Uuid::new_v4().to_string();
+    
+    // Check if PRD generation is enabled (defaults to true)
+    let should_generate_prd = payload.generate_prd.unwrap_or(true);
+    
     let raw_payload_json = serde_json::json!({
         "title": payload.title,
         "body": payload.body,
         "source_url": payload.source_url,
+        "generate_prd": should_generate_prd,
     })
     .to_string();
-
-    // Check if PRD generation is enabled (defaults to true)
-    let should_generate_prd = payload.generate_prd.unwrap_or(true);
 
     // If not generating PRD, use body directly
     let (kind, prd_markdown) = if !should_generate_prd {
@@ -176,10 +179,23 @@ async fn generate_prd_background(
     body: String,
     prd_template: String,
 ) {
+    info!("Starting PRD generation for inbox item {}", item_id);
     let repo_path = StdPath::new(&repo_path_string);
     
     match classify_prd(repo_path, &body, &prd_template).await {
-        Ok((kind, prd_markdown, _actionable)) => {
+        Ok((kind, prd_markdown, _actionable, recommend_ralph)) => {
+            info!("PRD generated successfully for inbox item {}, kind: {:?}, recommend_ralph: {}", item_id, kind, recommend_ralph);
+            
+            // Add Ralph recommendation note at the top of PRD if recommended
+            let final_prd = if recommend_ralph {
+                format!(
+                    "> **Recommended: Use Ralph mode** - This task is complex and would benefit from being split into multiple implementation steps. Enable Ralph when starting the task to have each checklist item implemented in a separate session.\n\n{}",
+                    prd_markdown
+                )
+            } else {
+                prd_markdown
+            };
+            
             // Update the inbox item with the generated PRD
             if let Err(e) = InboxItem::update(
                 &deployment.db().pool,
@@ -188,7 +204,7 @@ async fn generate_prd_background(
                     title: None,
                     kind: Some(kind),
                     status: None,
-                    prd_markdown: Some(prd_markdown),
+                    prd_markdown: Some(final_prd),
                     task_id: None,
                     linear_issue_id: None,
                     linear_issue_url: None,
@@ -198,6 +214,8 @@ async fn generate_prd_background(
             .await
             {
                 warn!("Failed to update inbox item {} with PRD: {}", item_id, e);
+            } else {
+                info!("Inbox item {} updated with generated PRD", item_id);
             }
         }
         Err(e) => {

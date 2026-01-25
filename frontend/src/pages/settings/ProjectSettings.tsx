@@ -139,6 +139,7 @@ export function ProjectSettings() {
   // Webhook example toggle states
   const [showManualExample, setShowManualExample] = useState(false);
   const [showPersonalAiExample, setShowPersonalAiExample] = useState(false);
+  const [showWorkItemsExample, setShowWorkItemsExample] = useState(false);
 
   // Environment variables state
   const [envVars, setEnvVars] = useState<EnvVarEntry[]>([]);
@@ -1695,6 +1696,62 @@ export function ProjectSettings() {
                         <p className="text-xs text-muted-foreground">
                           Showing local URLs. Set `VK_PUBLIC_BASE_URL` in the server to show public URLs.
                         </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Work Items API */}
+                  {selectedProjectId && (
+                    <div className="border rounded-lg p-4 space-y-2">
+                      <div className="font-medium">Work Items API</div>
+                      <p className="text-sm text-muted-foreground">
+                        Retrieve all inbox items and active tasks (not Done/Cancelled) for this project.
+                      </p>
+                      <div className="text-sm text-muted-foreground break-all font-mono bg-muted px-2 py-1 rounded">
+                        GET {window.location.origin}/api/public/projects/{selectedProjectId}/work-items
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowWorkItemsExample(!showWorkItemsExample)}
+                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${showWorkItemsExample ? 'rotate-180' : ''}`}
+                        />
+                        {showWorkItemsExample ? 'Hide' : 'Show'} example
+                      </button>
+                      {showWorkItemsExample && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Example Response:</div>
+                            <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">{`{
+  "success": true,
+  "data": {
+    "inbox_items": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "title": "Add dark mode toggle",
+        "status": "pending",
+        "kind": "feature",
+        "source": "manual"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "title": "Implement user authentication",
+        "status": "inprogress",
+        "has_in_progress_attempt": true,
+        "last_attempt_failed": false
+      }
+    ]
+  }
+}`}</pre>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <strong>Note:</strong> This is a public endpoint. No authentication required.
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}

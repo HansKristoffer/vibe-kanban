@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
-import { Clock } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
 import type { InboxItem } from 'shared/types';
 import { Badge } from '@/components/ui/badge';
 import { TaskCardHeader } from './TaskCardHeader';
+
+/** Check if PRD generation was requested but not yet completed */
+function isPrdGenerating(item: InboxItem): boolean {
+  if (item.prd_markdown) return false; // PRD already exists
+  if (!item.raw_payload_json) return false;
+  try {
+    const payload = JSON.parse(item.raw_payload_json);
+    return payload.generate_prd === true;
+  } catch {
+    return false;
+  }
+}
 
 interface InboxItemCardProps {
   item: InboxItem;
@@ -70,6 +82,7 @@ export function InboxItemCard({
     });
   }, [isOpen]);
 
+  const prdGenerating = useMemo(() => isPrdGenerating(item), [item]);
   const description = item.prd_markdown || '';
 
   return (
@@ -96,13 +109,18 @@ export function InboxItemCard({
             </div>
           }
         />
-        {description && (
+        {prdGenerating ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Generating PRD...</span>
+          </div>
+        ) : description ? (
           <p className="text-sm text-secondary-foreground break-words">
             {description.length > 130
               ? `${description.substring(0, 130)}...`
               : description}
           </p>
-        )}
+        ) : null}
         <div className="flex items-center gap-1">
           <Badge variant="outline" className="text-xs">
             {item.source}

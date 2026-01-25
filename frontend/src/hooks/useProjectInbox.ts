@@ -20,6 +20,9 @@ export function useProjectInbox(
       );
     },
     enabled: Boolean(projectId),
+    // Refetch every 5 seconds to pick up PRD generation updates
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -31,6 +34,9 @@ export function useInboxItem(inboxId: string | undefined) {
       return inboxApi.get(inboxId);
     },
     enabled: Boolean(inboxId),
+    // Refetch every 5 seconds to pick up PRD generation updates
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 }
 

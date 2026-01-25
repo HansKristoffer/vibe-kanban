@@ -6,19 +6,24 @@
 
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::process::Command;
-use tracing::{debug, warn};
+use tokio::time::timeout;
+use tracing::{debug, info, warn};
 
 // Re-export shared types from anthropic module
 pub use super::anthropic::{AnthropicInboxResult, DEFAULT_INBOX_PRD_TEMPLATE};
 
-/// The Claude Code CLI command
+/// The Claude Code CLI command - use same version as the task executor
 const CLAUDE_CODE_COMMAND: &str = "npx";
 const CLAUDE_CODE_PACKAGE: &str = "-y";
-const CLAUDE_CODE_PKG_NAME: &str = "@anthropic-ai/claude-code@latest";
+const CLAUDE_CODE_PKG_NAME: &str = "@anthropic-ai/claude-code@2.1.12";
+
+/// Timeout for Claude Code CLI execution (3 minutes)
+const CLAUDE_CODE_TIMEOUT_SECS: u64 = 180;
 
 #[derive(Debug, Error)]
 pub enum ClaudeCodePrdError {
@@ -36,6 +41,8 @@ pub enum ClaudeCodePrdError {
     ParseError(String),
     #[error("Claude Code returned no result")]
     EmptyResponse,
+    #[error("Claude Code CLI execution timed out after {0} seconds")]
+    Timeout(u64),
 }
 
 /// Claude Code PRD generation service
@@ -130,29 +137,32 @@ impl ClaudeCodePrdService {
     /// Build the prompt for Claude Code
     fn build_prompt(input: &str, prd_template: &str) -> String {
         format!(
-            r#"You are analyzing a codebase to generate a PRD for a feature request or bug report.
-
-IMPORTANT: First, explore the codebase to understand the project structure, existing patterns, and relevant code. Use tools like Read, Grep, and Glob to understand the codebase before generating the PRD.
-
-After understanding the codebase, generate a PRD based on the following input.
+            r#"Generate a PRD for this feature request or bug report.
 
 Return ONLY valid JSON (no markdown code fences, no explanatory text).
 JSON schema:
-{{"actionable":boolean,"kind":"bug"|"feature"|"other","title":string,"prd_markdown":string,"context_links":[string]}}
+{{"actionable":boolean,"kind":"bug"|"feature"|"other","title":string,"prd_markdown":string,"context_links":[],"recommend_ralph":boolean}}
 
 Rules:
 - actionable=false if there is no clear bug or feature request.
+- kind: "bug" for bugs, "feature" for new features, "other" for unclear.
 - title should be concise and human-friendly.
-- prd_markdown should be a detailed PRD following this template, enhanced with codebase-specific context:
+- prd_markdown should be a detailed PRD following this template:
 
 {prd_template}
 
-Guidelines for the PRD:
+- recommend_ralph: Set to true if this is a larger task that should be split into multiple implementation steps. Ralph mode runs multiple Claude Code sessions, each completing one checklist item. Recommend Ralph when:
+  * The task involves 3+ distinct implementation steps
+  * Changes span multiple files or components
+  * The work can be naturally broken into independent subtasks
+  * A single session would struggle to complete everything
+  Set to false for simple bug fixes, small features, or single-file changes.
+
+Guidelines:
 - Be clear and concise
-- Write for a coding LLM that will implement this feature
+- Write for a coding LLM that will implement this
 - Focus on what needs to be built, not how
-- Reference specific files, functions, or patterns from the codebase when relevant
-- Include context_links with paths to relevant files in the codebase
+- If recommend_ralph is true, format the Requirements section as a checklist with "- [ ]" items
 
 Input:
 {input}"#
@@ -164,25 +174,65 @@ Input:
         repo_path: &Path,
         prompt: &str,
     ) -> Result<String, ClaudeCodePrdError> {
-        debug!("Executing Claude Code CLI in {:?}", repo_path);
+        info!("Executing Claude Code CLI in {:?} (timeout: {}s)", repo_path, CLAUDE_CODE_TIMEOUT_SECS);
 
-        let output = Command::new(CLAUDE_CODE_COMMAND)
-            .args([
-                CLAUDE_CODE_PACKAGE,
-                CLAUDE_CODE_PKG_NAME,
-                "-p",
-                prompt,
-                "--dangerously-skip-permissions",
-                "--output-format",
-                "json",
-                "--max-turns",
-                "3",
-            ])
+        // Check if local auth exists
+        if let Some(home) = dirs::home_dir() {
+            let auth_file = home.join(".claude.json");
+            if auth_file.exists() {
+                debug!("Claude Code auth file found at {:?}", auth_file);
+            } else {
+                warn!("Claude Code auth file not found at {:?}. CLI may not be authenticated.", auth_file);
+            }
+        }
+
+        let args = [
+            CLAUDE_CODE_PACKAGE,
+            CLAUDE_CODE_PKG_NAME,
+            "-p",
+            prompt,
+            "--dangerously-skip-permissions",
+            "--output-format",
+            "json",
+            "--max-turns",
+            "1",
+        ];
+        
+        debug!(
+            "Running: {} {} (in {:?})",
+            CLAUDE_CODE_COMMAND,
+            args[..3].join(" ") + " [prompt] " + &args[4..].join(" "),
+            repo_path
+        );
+
+        // Use login shell to ensure PATH and other env vars are set correctly
+        let prompt_escaped = prompt.replace("'", "'\\''");
+        let shell_cmd = format!(
+            "{} {} {} -p '{}' --dangerously-skip-permissions --output-format json --max-turns 1",
+            CLAUDE_CODE_COMMAND,
+            CLAUDE_CODE_PACKAGE,
+            CLAUDE_CODE_PKG_NAME,
+            prompt_escaped
+        );
+        
+        debug!("Shell command length: {} chars", shell_cmd.len());
+
+        // Use zsh login shell to get proper PATH (including nvm/node)
+        let mut cmd = Command::new("/bin/zsh");
+        cmd.args(["-l", "-c", &shell_cmd])
             .current_dir(repo_path)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+            .stderr(Stdio::piped());
+
+        let command_future = cmd.output();
+
+        let output = timeout(Duration::from_secs(CLAUDE_CODE_TIMEOUT_SECS), command_future)
             .await
+            .map_err(|_| {
+                warn!("Claude Code CLI timed out after {} seconds", CLAUDE_CODE_TIMEOUT_SECS);
+                ClaudeCodePrdError::Timeout(CLAUDE_CODE_TIMEOUT_SECS)
+            })?
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     ClaudeCodePrdError::CliNotAvailable(
@@ -214,7 +264,7 @@ Input:
             return Err(ClaudeCodePrdError::EmptyResponse);
         }
 
-        debug!("Claude Code CLI output length: {} bytes", stdout.len());
+        info!("Claude Code CLI completed successfully, output length: {} bytes", stdout.len());
         Ok(stdout)
     }
 
@@ -223,14 +273,32 @@ Input:
         // Claude Code with --output-format json returns a JSON object with a "result" field
         // containing the assistant's final text response
         let trimmed = output.trim();
+        
+        // Log first 500 chars of output for debugging
+        debug!("Raw output (first 500 chars): {}", trimmed.chars().take(500).collect::<String>());
 
-        // Try to parse as Claude Code JSON output format first
-        if let Ok(claude_output) = serde_json::from_str::<ClaudeCodeOutput>(trimmed) {
+        // The zsh login shell might add extra text before the JSON
+        // Find the first '{' which should be the start of the Claude Code JSON envelope
+        let json_start = match trimmed.find("{\"type\":\"result\"") {
+            Some(pos) => pos,
+            None => trimmed.find('{').unwrap_or(0),
+        };
+        
+        let json_output = &trimmed[json_start..];
+        debug!("JSON output starts at position {}", json_start);
+
+        // Try to parse as Claude Code JSON output format
+        if let Ok(claude_output) = serde_json::from_str::<ClaudeCodeOutput>(json_output) {
+            debug!("Parsed Claude Code output envelope successfully");
             // Extract the text content from the result
             if let Some(text) = claude_output.result {
+                debug!("Result field (first 200 chars): {}", text.chars().take(200).collect::<String>());
                 let json_text = strip_code_fences(&text);
+                debug!("Stripped JSON (first 200 chars): {}", json_text.chars().take(200).collect::<String>());
                 return serde_json::from_str(&json_text)
-                    .map_err(|e| ClaudeCodePrdError::ParseError(e.to_string()));
+                    .map_err(|e| ClaudeCodePrdError::ParseError(format!("Failed to parse result JSON: {}", e)));
+            } else {
+                return Err(ClaudeCodePrdError::ParseError("Claude Code output has no result field".to_string()));
             }
         }
 
@@ -261,10 +329,10 @@ Input:
             }
         }
 
-        // Last resort: try to find JSON in the entire output
-        if let Some(start) = trimmed.find('{') {
-            if let Some(end) = trimmed.rfind('}') {
-                let json_text = &trimmed[start..=end];
+        // Last resort: try to find any JSON object with the expected fields
+        if let Some(start) = json_output.find('{') {
+            if let Some(end) = json_output.rfind('}') {
+                let json_text = &json_output[start..=end];
                 if let Ok(result) = serde_json::from_str::<AnthropicInboxResult>(json_text) {
                     return Ok(result);
                 }

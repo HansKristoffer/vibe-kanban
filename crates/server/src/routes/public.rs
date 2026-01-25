@@ -1,12 +1,13 @@
-use axum::{Router, extract::State, http::StatusCode, response::Json, routing::get};
+use axum::{Router, extract::{Path, State}, http::StatusCode, response::Json, routing::get};
 use chrono::{DateTime, Utc};
-use db::models::{project::Project, task::{Task, TaskStatus}};
+use db::models::{inbox_item::InboxItem, project::Project, task::{Task, TaskStatus}};
 use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::DeploymentImpl;
+use crate::routes::tasks::WorkItemsResponse;
 use utils::response::ApiResponse;
 
 /// Task information within a pipeline
@@ -121,6 +122,35 @@ pub async fn list_projects(
     Ok(Json(ApiResponse::success(public_projects)))
 }
 
+/// Get all inbox items and active tasks (not Done/Cancelled) for a project - no auth required
+pub async fn get_work_items(
+    State(deployment): State<DeploymentImpl>,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<WorkItemsResponse>>, StatusCode> {
+    let pool = &deployment.db().pool;
+
+    let inbox_items = InboxItem::list_by_project(pool, project_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch inbox items for project {}: {}", project_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let tasks = Task::find_active_by_project_id_with_attempt_status(pool, project_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch active tasks for project {}: {}", project_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(ApiResponse::success(WorkItemsResponse {
+        inbox_items,
+        tasks,
+    })))
+}
+
 pub fn router() -> Router<DeploymentImpl> {
-    Router::new().route("/projects", get(list_projects))
+    Router::new()
+        .route("/projects", get(list_projects))
+        .route("/projects/{project_id}/work-items", get(get_work_items))
 }

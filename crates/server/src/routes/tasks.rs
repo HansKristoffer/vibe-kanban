@@ -55,6 +55,13 @@ pub struct TaskQuery {
     pub project_id: Uuid,
 }
 
+/// Response containing all inbox items and active tasks for a project
+#[derive(Debug, Serialize, Deserialize, TS)]
+pub struct WorkItemsResponse {
+    pub inbox_items: Vec<InboxItem>,
+    pub tasks: Vec<TaskWithAttemptStatus>,
+}
+
 pub async fn get_tasks(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
@@ -66,6 +73,24 @@ pub async fn get_tasks(
             .await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
+}
+
+/// Get all inbox items and active tasks (not Done/Cancelled) for a project
+pub async fn get_work_items(
+    State(deployment): State<DeploymentImpl>,
+    axum::extract::Path(project_id): axum::extract::Path<Uuid>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<ResponseJson<ApiResponse<WorkItemsResponse>>, ApiError> {
+    ensure_project_member(&deployment.db().pool, project_id, &user.email).await?;
+
+    let pool = &deployment.db().pool;
+    let inbox_items = InboxItem::list_by_project(pool, project_id).await?;
+    let tasks = Task::find_active_by_project_id_with_attempt_status(pool, project_id).await?;
+
+    Ok(ResponseJson(ApiResponse::success(WorkItemsResponse {
+        inbox_items,
+        tasks,
+    })))
 }
 
 pub async fn stream_tasks_ws(
