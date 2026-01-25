@@ -7,8 +7,14 @@ import {
   KanbanProvider,
 } from '@/components/ui/shadcn-io/kanban';
 import { TaskCard } from './TaskCard';
-import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
-import { statusBoardColors, statusLabels } from '@/utils/statusLabels';
+import { InboxItemCard } from './InboxItemCard';
+import type { TaskStatus, TaskWithAttemptStatus, InboxItem } from 'shared/types';
+import {
+  statusBoardColors,
+  statusLabels,
+  inboxBoardColor,
+  inboxLabel,
+} from '@/utils/statusLabels';
 
 export type KanbanColumns = Record<TaskStatus, TaskWithAttemptStatus[]>;
 
@@ -19,6 +25,11 @@ interface TaskKanbanBoardProps {
   selectedTaskId?: string;
   onCreateTask?: () => void;
   projectId: string;
+  // Inbox props
+  inboxItems?: InboxItem[];
+  onViewInboxItem?: (item: InboxItem) => void;
+  onCreateInboxItem?: () => void;
+  selectedInboxItemId?: string;
 }
 
 function TaskKanbanBoard({
@@ -28,9 +39,34 @@ function TaskKanbanBoard({
   selectedTaskId,
   onCreateTask,
   projectId,
+  inboxItems = [],
+  onViewInboxItem,
+  onCreateInboxItem,
+  selectedInboxItemId,
 }: TaskKanbanBoardProps) {
   return (
     <KanbanProvider onDragEnd={onDragEnd}>
+      {/* Inbox column - appears first */}
+      <KanbanBoard id="inbox">
+        <KanbanHeader
+          name={inboxLabel}
+          color={inboxBoardColor}
+          onAddTask={onCreateInboxItem}
+        />
+        <KanbanCards>
+          {inboxItems.map((item, index) => (
+            <InboxItemCard
+              key={item.id}
+              item={item}
+              index={index}
+              onViewDetails={onViewInboxItem || (() => {})}
+              isOpen={selectedInboxItemId === item.id}
+            />
+          ))}
+        </KanbanCards>
+      </KanbanBoard>
+
+      {/* Task columns */}
       {Object.entries(columns).map(([status, tasks]) => {
         const statusKey = status as TaskStatus;
         return (

@@ -27,6 +27,8 @@ export interface SidebarWorkspace {
   latestProcessCompletedAt?: string;
   latestProcessStatus?: 'queued' | 'running' | 'completed' | 'failed' | 'killed';
   prStatus?: 'open' | 'merged' | 'closed' | 'unknown';
+  projectId?: string;
+  projectName?: string;
 }
 
 // Keep the old export name for backwards compatibility
@@ -71,6 +73,9 @@ function toSidebarWorkspace(
     latestProcessCompletedAt: summary?.latest_process_completed_at ?? undefined,
     latestProcessStatus: summary?.latest_process_status ?? undefined,
     prStatus: summary?.pr_status ?? undefined,
+    // Project info from summary
+    projectId: summary?.project_id ?? undefined,
+    projectName: summary?.project_name ?? undefined,
   };
 }
 

@@ -19,6 +19,31 @@
   "actions": {
     "addTask": "Add task"
   },
+  "inbox": {
+    "columnTitle": "Inbox",
+    "accept": "Accept",
+    "decline": "Decline",
+    "noItemSelected": "No inbox item selected",
+    "startTaskNow": "Start task now",
+    "createDialog": {
+      "title": "Create inbox item",
+      "description": "Add a new item to the inbox for this project.",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Short summary",
+      "detailsLabel": "Details",
+      "detailsPlaceholder": "Describe the request or issue...",
+      "generatePrdLabel": "Generate PRD from description",
+      "generatePrdDescription": "Uses AI to create a structured PRD from your description. Generates in the background after creation.",
+      "create": "Create"
+    },
+    "panel": {
+      "noItemSelected": "No inbox item selected",
+      "viewSource": "View source"
+    }
+  },
+  "inboxPanel": {
+    "noItemSelected": "No inbox item selected"
+  },
   "filters": {
     "sharedToggleAria": "Toggle shared tasks",
     "sharedToggleTooltip": "Show/hide shared content"

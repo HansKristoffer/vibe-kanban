@@ -5,6 +5,8 @@ use db::models::{
     coding_agent_turn::CodingAgentTurn,
     execution_process::{ExecutionProcess, ExecutionProcessStatus},
     merge::{Merge, MergeStatus},
+    project::Project,
+    task::Task,
     workspace::Workspace,
     workspace_repo::WorkspaceRepo,
 };
@@ -48,6 +50,10 @@ pub struct WorkspaceSummary {
     pub has_unseen_turns: bool,
     /// PR status for this workspace (if any PR exists)
     pub pr_status: Option<MergeStatus>,
+    /// Project ID this workspace belongs to
+    pub project_id: Option<Uuid>,
+    /// Project name for display
+    pub project_name: Option<String>,
 }
 
 /// Response containing summaries for requested workspaces
@@ -109,7 +115,43 @@ pub async fn get_workspace_summaries(
     // 6. Get PR status for each workspace
     let pr_statuses = Merge::get_latest_pr_status_for_workspaces(pool, archived).await?;
 
-    // 7. Compute diff stats for each workspace (in parallel)
+    // 7. Fetch project info for each workspace via tasks
+    // Build workspace_id -> task_id map
+    let workspace_task_ids: HashMap<Uuid, Uuid> = workspaces
+        .iter()
+        .map(|ws| (ws.id, ws.task_id))
+        .collect();
+
+    // Get unique task IDs and fetch tasks
+    let unique_task_ids: Vec<Uuid> = workspace_task_ids.values().cloned().collect();
+    let mut task_project_map: HashMap<Uuid, Uuid> = HashMap::new();
+    for task_id in &unique_task_ids {
+        if let Ok(Some(task)) = Task::find_by_id(pool, *task_id).await {
+            task_project_map.insert(task.id, task.project_id);
+        }
+    }
+
+    // Get unique project IDs and fetch projects
+    let unique_project_ids: Vec<Uuid> = task_project_map.values().cloned().collect();
+    let mut project_names: HashMap<Uuid, String> = HashMap::new();
+    for project_id in &unique_project_ids {
+        if let Ok(Some(project)) = Project::find_by_id(pool, *project_id).await {
+            project_names.insert(project.id, project.name);
+        }
+    }
+
+    // Build workspace_id -> (project_id, project_name) map
+    let workspace_projects: HashMap<Uuid, (Uuid, String)> = workspaces
+        .iter()
+        .filter_map(|ws| {
+            let task_id = ws.task_id;
+            let project_id = task_project_map.get(&task_id)?;
+            let project_name = project_names.get(project_id)?;
+            Some((ws.id, (*project_id, project_name.clone())))
+        })
+        .collect();
+
+    // 8. Compute diff stats for each workspace (in parallel)
     let diff_futures: Vec<_> = workspaces
         .iter()
         .map(|ws| {
@@ -132,7 +174,7 @@ pub async fn get_workspace_summaries(
         futures_util::future::join_all(diff_futures).await;
     let diff_stats: HashMap<Uuid, DiffStats> = diff_results.into_iter().flatten().collect();
 
-    // 8. Assemble response
+    // 9. Assemble response
     let summaries: Vec<WorkspaceSummary> = workspaces
         .iter()
         .map(|ws| {
@@ -142,6 +184,7 @@ pub async fn get_workspace_summaries(
                 .map(|p| pending_approval_eps.contains(&p.execution_process_id))
                 .unwrap_or(false);
             let stats = diff_stats.get(&id);
+            let project_info = workspace_projects.get(&id);
 
             WorkspaceSummary {
                 workspace_id: id,
@@ -155,6 +198,8 @@ pub async fn get_workspace_summaries(
                 has_running_dev_server: dev_server_workspaces.contains(&id),
                 has_unseen_turns: unseen_workspaces.contains(&id),
                 pr_status: pr_statuses.get(&id).cloned(),
+                project_id: project_info.map(|(id, _)| *id),
+                project_name: project_info.map(|(_, name)| name.clone()),
             }
         })
         .collect();

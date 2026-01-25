@@ -1,3 +1,5 @@
+use std::path::Path as StdPath;
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -8,6 +10,7 @@ use axum::body::Bytes;
 use db::models::inbox_item::{CreateInboxItem, InboxItem, InboxItemKind, InboxItemStatus, InboxSource, UpsertInboxItem};
 use db::models::project::Project;
 use db::models::project_integrations::ProjectIntegrations;
+use db::models::project_repo::ProjectRepo;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -17,8 +20,8 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use deployment::Deployment;
-use services::services::anthropic::{
-    AnthropicClient, AnthropicInboxResult, DEFAULT_INBOX_PRD_TEMPLATE,
+use services::services::claude_code_prd::{
+    AnthropicInboxResult, ClaudeCodePrdService, ClaudeCodePrdError, DEFAULT_INBOX_PRD_TEMPLATE,
 };
 use services::services::inbox_outbound::post_registered_if_needed;
 use services::services::posthog_sentry_enrichment::{
@@ -135,6 +138,20 @@ async fn load_project(
         .ok_or_else(|| ApiError::BadRequest("Project not found".to_string()))
 }
 
+/// Get the first repository path for a project (required for Claude Code context)
+async fn get_project_repo_path(
+    deployment: &DeploymentImpl,
+    project_id: Uuid,
+) -> Result<String, ApiError> {
+    let repos = ProjectRepo::find_repos_for_project(&deployment.db().pool, project_id).await?;
+    repos
+        .first()
+        .map(|r| r.path.to_string_lossy().to_string())
+        .ok_or_else(|| ApiError::BadRequest(
+            "No repository configured for project. Claude Code requires a repository to analyze.".to_string()
+        ))
+}
+
 async fn upsert_inbox_item(
     deployment: &DeploymentImpl,
     data: UpsertInboxItem,
@@ -154,20 +171,11 @@ fn effective_prd_template(project: &Project) -> &str {
 }
 
 async fn classify_payload(
+    repo_path: &StdPath,
     input: &str,
     prd_template: &str,
-) -> Option<AnthropicInboxResult> {
-    let client = AnthropicClient::from_env().ok()?;
-    match client
-        .classify_and_generate_prd_with_template(input, prd_template)
-        .await
-    {
-        Ok(result) => Some(result),
-        Err(err) => {
-            warn!("Anthropic classification failed: {}", err);
-            None
-        }
-    }
+) -> Result<AnthropicInboxResult, ClaudeCodePrdError> {
+    ClaudeCodePrdService::classify_and_generate_prd(repo_path, input, prd_template).await
 }
 
 /// Post a PRD to Slack if Slack integration is configured.
@@ -300,6 +308,7 @@ pub async fn linear_webhook(
     );
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
@@ -326,13 +335,16 @@ pub async fn linear_webhook(
     } else {
         format!("Title: {}\n\nPayload:\n{}", title, enrichment_text)
     };
-    let classification = classify_payload(&classification_input, prd_template).await;
+    let classification = classify_payload(StdPath::new(&repo_path), &classification_input, prd_template).await;
     let (kind, status, prd_markdown) = match classification {
-        Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
+        Ok(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
-        Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Feature, InboxItemStatus::Pending, description),
+        Ok(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     let item = upsert_inbox_item(
@@ -394,6 +406,7 @@ pub async fn intercom_webhook(
     let source_url = extract_string(&payload, &["/data/item/url", "/data/url", "/url"]);
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
@@ -422,16 +435,20 @@ pub async fn intercom_webhook(
     }
 
     let classification = classify_payload(
+        StdPath::new(&repo_path),
         &format!("Title: {}\n\nPayload:\n{}", title, enrichment_text),
         prd_template,
     )
     .await;
     let (kind, status, prd_markdown) = match classification {
-        Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
+        Ok(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
-        Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Other, InboxItemStatus::Pending, None),
+        Ok(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     let item = upsert_inbox_item(
@@ -487,20 +504,25 @@ pub async fn modjo_webhook(
     let source_url = extract_string(&payload, &["/data/url", "/url"]);
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
     let classification = classify_payload(
+        StdPath::new(&repo_path),
         &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
         prd_template,
     )
     .await;
     let (kind, status, prd_markdown) = match classification {
-        Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
+        Ok(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
-        Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Other, InboxItemStatus::Pending, None),
+        Ok(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     let item = upsert_inbox_item(
@@ -539,15 +561,16 @@ pub async fn manual_webhook(
         serde_json::from_slice(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
-    let classification = classify_payload(&payload.body, prd_template).await;
+    let classification = classify_payload(StdPath::new(&repo_path), &payload.body, prd_template).await;
     let mut kind = payload.kind.unwrap_or(InboxItemKind::Other);
     let mut status = InboxItemStatus::Pending;
     let mut prd_markdown = Some(payload.body);
 
-    if let Some(result) = classification {
+    if let Ok(result) = classification {
         kind = result.kind.clone();
         prd_markdown = Some(result.prd_markdown);
         status = if result.actionable && !matches!(result.kind, InboxItemKind::Other) {
@@ -632,20 +655,25 @@ pub async fn posthog_webhook(
     let source_url = extract_string(&payload, &["/data/event/url", "/data/url", "/url"]);
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
     let classification = classify_payload(
+        StdPath::new(&repo_path),
         &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
         prd_template,
     )
     .await;
     let (kind, status, prd_markdown) = match classification {
-        Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
+        Ok(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
-        Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Other, InboxItemStatus::Pending, None),
+        Ok(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     let item = upsert_inbox_item(
@@ -723,20 +751,25 @@ pub async fn sentry_webhook(
     );
 
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
     let action_token = Uuid::new_v4().to_string();
     let raw_payload_json = String::from_utf8_lossy(&body).to_string();
     let classification = classify_payload(
+        StdPath::new(&repo_path),
         &format!("Title: {}\n\nPayload:\n{}", title, raw_payload_json),
         prd_template,
     )
     .await;
     let (kind, status, prd_markdown) = match classification {
-        Some(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
+        Ok(result) if result.actionable && !matches!(result.kind, InboxItemKind::Other) => {
             (result.kind, InboxItemStatus::Pending, Some(result.prd_markdown))
         }
-        Some(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
-        None => (InboxItemKind::Other, InboxItemStatus::Pending, None),
+        Ok(result) => (result.kind, InboxItemStatus::Ignored, Some(result.prd_markdown)),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     let item = upsert_inbox_item(
@@ -940,19 +973,28 @@ async fn process_slack_command_async(
             DEFAULT_INBOX_PRD_TEMPLATE.to_string()
         }
     };
-    // Generate PRD from the text
-    let classification = classify_payload(&command_text, &prd_template).await;
+    
+    // Get repo path for Claude Code context
+    let repo_path = match get_project_repo_path(&deployment, project_id).await {
+        Ok(path) => path,
+        Err(err) => {
+            warn!("Failed to get repo path for Slack command: {}", err);
+            return;
+        }
+    };
+    
+    // Generate PRD from the text using Claude Code
+    let classification = classify_payload(StdPath::new(&repo_path), &command_text, &prd_template).await;
     let (title, kind, prd_markdown): (String, InboxItemKind, String) = match classification {
-        Some(result) => (
+        Ok(result) => (
             if result.title.is_empty() { "Task from Slack".to_string() } else { result.title },
             result.kind,
             result.prd_markdown,
         ),
-        None => (
-            "Task from Slack".to_string(),
-            InboxItemKind::Feature,
-            command_text.clone(),
-        ),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed for Slack command: {}", e);
+            return;
+        }
     };
 
     // Create inbox item
@@ -1710,12 +1752,13 @@ pub async fn personal_ai_quick(
     // 1. Load project integrations using webhook token
     let integrations = load_project_integrations(&deployment, &webhook_token).await?;
     let project = load_project(&deployment, integrations.project_id).await?;
+    let repo_path = get_project_repo_path(&deployment, integrations.project_id).await?;
     let prd_template = effective_prd_template(&project);
 
-    // 2. Generate PRD using Anthropic (with fallback to raw text)
-    let classification = classify_payload(&payload.text, prd_template).await;
+    // 2. Generate PRD using Claude Code (with codebase context)
+    let classification = classify_payload(StdPath::new(&repo_path), &payload.text, prd_template).await;
     let (title, kind, prd_markdown): (String, InboxItemKind, String) = match classification {
-        Some(result) => (
+        Ok(result) => (
             payload.title.clone().unwrap_or_else(|| {
                 if result.title.is_empty() {
                     "Quick task from Personal AI".to_string()
@@ -1726,11 +1769,10 @@ pub async fn personal_ai_quick(
             result.kind,
             result.prd_markdown,
         ),
-        None => (
-            payload.title.clone().unwrap_or_else(|| "Quick task from Personal AI".to_string()),
-            InboxItemKind::Feature,
-            payload.text.clone(),
-        ),
+        Err(e) => {
+            warn!("Claude Code PRD generation failed for personal-ai: {}", e);
+            return Err(ApiError::BadRequest(format!("Claude Code PRD generation failed: {}", e)));
+        }
     };
 
     // 3. Create inbox item

@@ -2,7 +2,7 @@ use std::{collections::HashMap, env, fs, path::Path};
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use server::routes::task_attempts::pr::DEFAULT_PR_DESCRIPTION_PROMPT;
-use services::services::anthropic::DEFAULT_INBOX_PRD_TEMPLATE;
+use services::services::claude_code_prd::DEFAULT_INBOX_PRD_TEMPLATE;
 use ts_rs::TS;
 
 fn generate_types_content() -> String {

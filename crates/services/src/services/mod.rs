@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod anthropic;
 pub mod approvals;
+pub mod claude_code_prd;
 pub mod auth;
 pub mod config;
 pub mod container;

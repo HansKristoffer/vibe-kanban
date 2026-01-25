@@ -15,3 +15,7 @@ export const statusBoardColors: Record<TaskStatus, string> = {
   done: '--success',
   cancelled: '--destructive',
 };
+
+// Inbox column styling (separate from task statuses)
+export const inboxLabel = 'Inbox';
+export const inboxBoardColor = '--primary';

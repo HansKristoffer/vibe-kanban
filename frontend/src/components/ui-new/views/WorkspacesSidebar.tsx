@@ -68,6 +68,7 @@ function WorkspaceList({
           latestProcessCompletedAt={workspace.latestProcessCompletedAt}
           latestProcessStatus={workspace.latestProcessStatus}
           prStatus={workspace.prStatus}
+          projectName={workspace.projectName}
           onClick={() => onSelectWorkspace(workspace.id)}
         />
       ))}
@@ -191,6 +192,7 @@ export function WorkspacesSidebar({
                   latestProcessCompletedAt={workspace.latestProcessCompletedAt}
                   latestProcessStatus={workspace.latestProcessStatus}
                   prStatus={workspace.prStatus}
+                  projectName={workspace.projectName}
                   onClick={() => onSelectWorkspace(workspace.id)}
                 />
               ))
@@ -301,6 +303,7 @@ export function WorkspacesSidebar({
                 latestProcessCompletedAt={workspace.latestProcessCompletedAt}
                 latestProcessStatus={workspace.latestProcessStatus}
                 prStatus={workspace.prStatus}
+                projectName={workspace.projectName}
                 onClick={() => onSelectWorkspace(workspace.id)}
               />
             ))}

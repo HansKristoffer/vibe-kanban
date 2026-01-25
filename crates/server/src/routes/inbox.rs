@@ -1,3 +1,5 @@
+use std::path::Path as StdPath;
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -10,15 +12,17 @@ use db::models::inbox_item::{
 };
 use db::models::project_integrations::ProjectIntegrations;
 use db::models::project_member::ProjectMember;
+use db::models::project_repo::ProjectRepo;
 use db::models::task::{CreateTask, Task};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::AuthenticatedUser};
 use deployment::Deployment;
-use services::services::anthropic::{
-    AnthropicClient, DEFAULT_INBOX_PRD_TEMPLATE,
+use services::services::claude_code_prd::{
+    ClaudeCodePrdService, ClaudeCodePrdError, DEFAULT_INBOX_PRD_TEMPLATE,
 };
 use services::services::inbox_integrations::linear_create_issue;
 use utils::response::ApiResponse;
@@ -35,6 +39,8 @@ pub struct CreateInboxItemRequest {
     pub title: String,
     pub body: String,
     pub source_url: Option<String>,
+    /// Whether to generate a PRD from the body using AI. Defaults to true.
+    pub generate_prd: Option<bool>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -49,15 +55,13 @@ pub struct UpdateInboxItemRequest {
 }
 
 async fn classify_prd(
+    repo_path: &StdPath,
     input: &str,
     prd_template: &str,
-) -> Option<(InboxItemKind, String, bool)> {
-    let client = AnthropicClient::from_env().ok()?;
-    let result = client
-        .classify_and_generate_prd_with_template(input, prd_template)
-        .await
-        .ok()?;
-    Some((result.kind, result.prd_markdown, result.actionable))
+) -> Result<(InboxItemKind, String, bool), ClaudeCodePrdError> {
+    let result = ClaudeCodePrdService::classify_and_generate_prd(repo_path, input, prd_template)
+        .await?;
+    Ok((result.kind, result.prd_markdown, result.actionable))
 }
 
 pub async fn list_inbox_items(
@@ -92,18 +96,26 @@ pub async fn create_inbox_item(
     Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateInboxItemRequest>,
 ) -> Result<Json<ApiResponse<InboxItem>>, ApiError> {
-    ensure_project_member(&deployment.db().pool, payload.project_id, &user.email).await?;
-    let project = db::models::project::Project::find_by_id(
-        &deployment.db().pool,
-        payload.project_id,
-    )
-    .await?
-    .ok_or_else(|| ApiError::BadRequest("Project not found".to_string()))?;
+    let pool = &deployment.db().pool;
+    ensure_project_member(pool, payload.project_id, &user.email).await?;
+    
+    let project = db::models::project::Project::find_by_id(pool, payload.project_id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Project not found".to_string()))?;
+    
+    // Get the project's repository path for Claude Code context
+    let repos = ProjectRepo::find_repos_for_project(pool, payload.project_id).await?;
+    let repo = repos
+        .first()
+        .ok_or_else(|| ApiError::BadRequest("No repository configured for project. Claude Code requires a repository to analyze.".to_string()))?;
+    let repo_path_string = repo.path.to_string_lossy().to_string();
+    
     let prd_template = project
         .inbox_prd_template
         .as_deref()
         .filter(|template| !template.trim().is_empty())
-        .unwrap_or(DEFAULT_INBOX_PRD_TEMPLATE);
+        .unwrap_or(DEFAULT_INBOX_PRD_TEMPLATE)
+        .to_string();
     let action_token = Uuid::new_v4().to_string();
     let source_item_id = Uuid::new_v4().to_string();
     let raw_payload_json = serde_json::json!({
@@ -113,24 +125,29 @@ pub async fn create_inbox_item(
     })
     .to_string();
 
-    let (kind, prd_markdown, _actionable) =
-        classify_prd(&payload.body, prd_template)
-        .await
-        .map(|(kind, prd, actionable)| (kind, prd, actionable))
-        .unwrap_or((InboxItemKind::Other, payload.body.clone(), true));
+    // Check if PRD generation is enabled (defaults to true)
+    let should_generate_prd = payload.generate_prd.unwrap_or(true);
+
+    // If not generating PRD, use body directly
+    let (kind, prd_markdown) = if !should_generate_prd {
+        (InboxItemKind::Other, Some(payload.body.clone()))
+    } else {
+        // PRD will be generated in background, start with no PRD
+        (InboxItemKind::Other, None)
+    };
 
     let item = InboxItem::create(
-        &deployment.db().pool,
+        pool,
         &CreateInboxItem {
             project_id: payload.project_id,
             source: InboxSource::Manual,
             source_item_id,
             source_url: payload.source_url,
-            title: payload.title,
+            title: payload.title.clone(),
             raw_payload_json: Some(raw_payload_json),
             kind,
             status: InboxItemStatus::Pending,
-            prd_markdown: Some(prd_markdown),
+            prd_markdown,
             action_token,
             linear_issue_id: None,
             linear_issue_url: None,
@@ -139,7 +156,55 @@ pub async fn create_inbox_item(
     )
     .await?;
 
+    // Spawn background task to generate PRD if enabled
+    if should_generate_prd {
+        let item_id = item.id;
+        let body = payload.body.clone();
+        tokio::spawn(async move {
+            generate_prd_background(deployment, item_id, repo_path_string, body, prd_template).await;
+        });
+    }
+
     Ok(Json(ApiResponse::success(item)))
+}
+
+/// Background task to generate PRD and update the inbox item
+async fn generate_prd_background(
+    deployment: DeploymentImpl,
+    item_id: Uuid,
+    repo_path_string: String,
+    body: String,
+    prd_template: String,
+) {
+    let repo_path = StdPath::new(&repo_path_string);
+    
+    match classify_prd(repo_path, &body, &prd_template).await {
+        Ok((kind, prd_markdown, _actionable)) => {
+            // Update the inbox item with the generated PRD
+            if let Err(e) = InboxItem::update(
+                &deployment.db().pool,
+                item_id,
+                &UpdateInboxItem {
+                    title: None,
+                    kind: Some(kind),
+                    status: None,
+                    prd_markdown: Some(prd_markdown),
+                    task_id: None,
+                    linear_issue_id: None,
+                    linear_issue_url: None,
+                    outbound_last_error: None,
+                },
+            )
+            .await
+            {
+                warn!("Failed to update inbox item {} with PRD: {}", item_id, e);
+            }
+        }
+        Err(e) => {
+            warn!("Claude Code PRD generation failed for inbox item {}: {}", item_id, e);
+            // Item remains with no PRD, user can manually edit or retry later
+        }
+    }
 }
 
 pub async fn update_inbox_item(
@@ -226,54 +291,56 @@ async fn accept_inbox_item_internal(
     )
     .await?;
 
-    // 2. Create Linear issue if Linear is configured and source is not Linear
+    // 2. Try to create Linear issue if Linear is configured and source is not Linear
+    // Linear is optional - if it fails or isn't configured, we still create the task
     let mut linear_issue_id = item.linear_issue_id.clone();
     let mut linear_issue_url = item.linear_issue_url.clone();
 
     if !matches!(item.source, InboxSource::Linear) && linear_issue_id.is_none() {
-        let integrations = ProjectIntegrations::find_by_project_id(pool, item.project_id)
-            .await?
-            .ok_or_else(|| ApiError::BadRequest("Linear integration not configured".to_string()))?;
-        let api_key = integrations
-            .linear_api_key
-            .as_deref()
-            .ok_or_else(|| ApiError::BadRequest("Linear API key not configured".to_string()))?;
-        let team_id = integrations
-            .linear_team_id
-            .as_deref()
-            .ok_or_else(|| ApiError::BadRequest("Linear team not configured".to_string()))?;
+        // Try to create Linear issue, but don't fail if Linear isn't configured or fails
+        if let Ok(Some(integrations)) = ProjectIntegrations::find_by_project_id(pool, item.project_id).await {
+            if let (Some(api_key), Some(team_id)) = (
+                integrations.linear_api_key.as_deref(),
+                integrations.linear_team_id.as_deref(),
+            ) {
+                let mut description = item.prd_markdown.clone().unwrap_or_default();
 
-        let mut description = item.prd_markdown.clone().unwrap_or_default();
+                // Add VK task link at the top of description
+                let vk_task_url = services::services::slack::get_vk_task_url(&item.project_id, &task.id);
+                if !vk_task_url.is_empty() {
+                    let vk_link = format!("**[View in Vibe Kanban]({})**\n\n", vk_task_url);
+                    description = format!("{}{}", vk_link, description);
+                }
 
-        // Add VK task link at the top of description
-        let vk_task_url = services::services::slack::get_vk_task_url(&item.project_id, &task.id);
-        if !vk_task_url.is_empty() {
-            let vk_link = format!("**[View in Vibe Kanban]({})**\n\n", vk_task_url);
-            description = format!("{}{}", vk_link, description);
-        }
+                if let Some(source_url) = item.source_url.as_ref() {
+                    if !description.trim().is_empty() {
+                        description.push_str("\n\n");
+                    }
+                    description.push_str(&format!("Source: {}", source_url));
+                }
+                if description.trim().is_empty() {
+                    description = item.title.clone();
+                }
 
-        if let Some(source_url) = item.source_url.as_ref() {
-            if !description.trim().is_empty() {
-                description.push_str("\n\n");
+                match linear_create_issue(
+                    api_key,
+                    team_id,
+                    &item.title,
+                    &description,
+                    integrations.linear_state_id_todo.as_deref(),
+                )
+                .await
+                {
+                    Ok(issue) => {
+                        linear_issue_id = Some(issue.id);
+                        linear_issue_url = issue.url;
+                    }
+                    Err(e) => {
+                        warn!("Failed to create Linear issue for inbox item {}: {}", item.id, e);
+                    }
+                }
             }
-            description.push_str(&format!("Source: {}", source_url));
         }
-        if description.trim().is_empty() {
-            description = item.title.clone();
-        }
-
-        let issue = linear_create_issue(
-            api_key,
-            team_id,
-            &item.title,
-            &description,
-            integrations.linear_state_id_todo.as_deref(),
-        )
-        .await
-        .map_err(|err| ApiError::BadRequest(format!("Linear issue create failed: {}", err)))?;
-
-        linear_issue_id = Some(issue.id);
-        linear_issue_url = issue.url;
     }
 
     InboxItem::update(

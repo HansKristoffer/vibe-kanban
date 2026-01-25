@@ -34,6 +34,8 @@ interface WorkspaceSummaryProps {
   summary?: boolean;
   /** Whether this is a draft workspace (shows "Draft" instead of elapsed time) */
   isDraft?: boolean;
+  /** Project name to display as a tag */
+  projectName?: string;
 }
 
 export function WorkspaceSummary({
@@ -55,6 +57,7 @@ export function WorkspaceSummary({
   className,
   summary = false,
   isDraft = false,
+  projectName,
 }: WorkspaceSummaryProps) {
   const { t } = useTranslation('common');
   const hasChanges = filesChanged !== undefined && filesChanged > 0;
@@ -109,7 +112,14 @@ export function WorkspaceSummary({
         </div>
         {(!summary || isActive) && (
           <div className="flex w-full items-center gap-base text-sm h-5">
-            {/* Dev server running - leftmost */}
+            {/* Project name tag - first item */}
+            {projectName && (
+              <span className="shrink-0 px-1.5 py-0.5 text-xs bg-tertiary text-low rounded">
+                {projectName}
+              </span>
+            )}
+
+            {/* Dev server running */}
             {hasRunningDevServer && (
               <PlayIcon
                 className="size-icon-xs text-brand shrink-0"

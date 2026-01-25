@@ -424,7 +424,11 @@ clear: Array<string> | null, };
 
 export type InboxQuery = { project_id: string, status: InboxItemStatus | null, };
 
-export type CreateInboxItemRequest = { project_id: string, title: string, body: string, source_url: string | null, };
+export type CreateInboxItemRequest = { project_id: string, title: string, body: string, source_url: string | null, 
+/**
+ * Whether to generate a PRD from the body using AI. Defaults to true.
+ */
+generate_prd: boolean | null, };
 
 export type UpdateInboxItemRequest = { title: string | null, prd_markdown: string | null, };
 
@@ -548,7 +552,15 @@ has_unseen_turns: boolean,
 /**
  * PR status for this workspace (if any PR exists)
  */
-pr_status: MergeStatus | null, };
+pr_status: MergeStatus | null, 
+/**
+ * Project ID this workspace belongs to
+ */
+project_id: string | null, 
+/**
+ * Project name for display
+ */
+project_name: string | null, };
 
 export type WorkspaceSummaryResponse = { summaries: Array<WorkspaceSummary>, };
 

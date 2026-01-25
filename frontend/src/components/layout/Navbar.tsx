@@ -17,7 +17,6 @@ import {
   Plus,
   LogOut,
   LogIn,
-  Inbox,
   LayoutGrid,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
@@ -200,18 +199,6 @@ export function Navbar() {
                     <Link to={`/projects/${projectId}/tasks`}>
                       <LayoutGrid className="h-4 w-4" />
                       Tasks
-                    </Link>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 gap-1.5"
-                    asChild
-                    aria-label="Inbox"
-                  >
-                    <Link to={`/projects/${projectId}/inbox`}>
-                      <Inbox className="h-4 w-4" />
-                      Inbox
                     </Link>
                   </Button>
                 </div>

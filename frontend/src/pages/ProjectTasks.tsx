@@ -3,10 +3,10 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, Plus, X } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { tasksApi } from '@/lib/api';
-import type { RepoBranchStatus, Workspace } from 'shared/types';
+import type { RepoBranchStatus, Workspace, InboxItem } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { FeatureShowcaseDialog } from '@/components/dialogs/global/FeatureShowcaseDialog';
 import { BetaWorkspacesDialog } from '@/components/dialogs/global/BetaWorkspacesDialog';
@@ -48,6 +48,7 @@ import TaskKanbanBoard, {
 } from '@/components/tasks/TaskKanbanBoard';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { useProjectInbox, useInboxItem } from '@/hooks/useProjectInbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 import { TasksLayout, type LayoutMode } from '@/components/layout/TasksLayout';
@@ -55,6 +56,7 @@ import { PreviewPanel } from '@/components/panels/PreviewPanel';
 import { DiffsPanel } from '@/components/panels/DiffsPanel';
 import TaskAttemptPanel from '@/components/panels/TaskAttemptPanel';
 import TaskPanel from '@/components/panels/TaskPanel';
+import InboxItemPanel from '@/components/panels/InboxItemPanel';
 import TodoPanel from '@/components/tasks/TodoPanel';
 import { NewCard, NewCardHeader } from '@/components/ui/new-card';
 import {
@@ -67,6 +69,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { AttemptHeaderActions } from '@/components/panels/AttemptHeaderActions';
 import { TaskPanelHeaderActions } from '@/components/panels/TaskPanelHeaderActions';
+import { CreateInboxItemDialog } from '@/components/dialogs/inbox/CreateInboxItemDialog';
 
 import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
 
@@ -169,12 +172,19 @@ export function ProjectTasks() {
     error: streamError,
   } = useProjectTasks(projectId || '');
 
+  // Inbox integration
+  const { data: inboxItems = [] } = useProjectInbox(projectId, 'pending');
+  const selectedInboxItemId = searchParams.get('inbox') ?? undefined;
+  const { data: selectedInboxItem } = useInboxItem(selectedInboxItemId);
+
   const selectedTask = useMemo(
     () => (taskId ? (tasksById[taskId] ?? null) : null),
     [taskId, tasksById]
   );
 
-  const isPanelOpen = Boolean(taskId && selectedTask);
+  // Panel is open if we have a task selected OR an inbox item selected
+  const isPanelOpen = Boolean((taskId && selectedTask) || selectedInboxItemId);
+  const isInboxPanelOpen = Boolean(selectedInboxItemId && !taskId);
 
   const { config, updateAndSaveConfig, loading } = useUserSystem();
 
@@ -578,27 +588,68 @@ export function ProjectTasks() {
 
   const handleClosePanel = useCallback(() => {
     if (projectId) {
-      navigate(`/projects/${projectId}/tasks`, { replace: true });
+      // Clear inbox query param if present
+      const params = new URLSearchParams(searchParams);
+      params.delete('inbox');
+      const search = params.toString();
+      navigate(
+        { pathname: `/projects/${projectId}/tasks`, search: search ? `?${search}` : '' },
+        { replace: true }
+      );
     }
-  }, [projectId, navigate]);
+  }, [projectId, navigate, searchParams]);
+
+  const handleViewInboxItem = useCallback(
+    (item: InboxItem) => {
+      if (!projectId) return;
+      // Clear any task selection and set inbox query param
+      const params = new URLSearchParams(searchParams);
+      params.set('inbox', item.id);
+      navigate(
+        { pathname: `/projects/${projectId}/tasks`, search: `?${params.toString()}` },
+        { replace: true }
+      );
+    },
+    [projectId, navigate, searchParams]
+  );
+
+  const handleCreateInboxItem = useCallback(() => {
+    if (projectId) {
+      CreateInboxItemDialog.show({ projectId });
+    }
+  }, [projectId]);
 
   const handleViewTaskDetails = useCallback(
     (task: Task, attemptIdToShow?: string) => {
       if (!projectId) return;
 
+      // Clear inbox param when viewing a task
+      const params = new URLSearchParams(searchParams);
+      params.delete('inbox');
+      const search = params.toString();
+
       // If beta_workspaces is enabled, always navigate to task view (not attempt)
       if (config?.beta_workspaces) {
-        navigateWithSearch(paths.task(projectId, task.id));
+        navigate(
+          { pathname: paths.task(projectId, task.id), search: search ? `?${search}` : '' },
+          { replace: false }
+        );
         return;
       }
 
       if (attemptIdToShow) {
-        navigateWithSearch(paths.attempt(projectId, task.id, attemptIdToShow));
+        navigate(
+          { pathname: paths.attempt(projectId, task.id, attemptIdToShow), search: search ? `?${search}` : '' },
+          { replace: false }
+        );
       } else {
-        navigateWithSearch(`${paths.task(projectId, task.id)}/attempts/latest`);
+        navigate(
+          { pathname: `${paths.task(projectId, task.id)}/attempts/latest`, search: search ? `?${search}` : '' },
+          { replace: false }
+        );
       }
     },
-    [projectId, navigateWithSearch, config?.beta_workspaces]
+    [projectId, navigate, searchParams, config?.beta_workspaces]
   );
 
   const selectNextTask = useCallback(() => {
@@ -782,9 +833,42 @@ export function ProjectTasks() {
           selectedTaskId={selectedTask?.id}
           onCreateTask={handleCreateNewTask}
           projectId={projectId!}
+          inboxItems={inboxItems}
+          onViewInboxItem={handleViewInboxItem}
+          onCreateInboxItem={handleCreateInboxItem}
+          selectedInboxItemId={selectedInboxItemId}
         />
       </div>
     );
+
+  // Header for inbox item panel
+  const inboxRightHeader = isInboxPanelOpen && selectedInboxItem ? (
+    <NewCardHeader
+      className="shrink-0"
+      actions={
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleClosePanel}
+          aria-label={t('taskHeader.closePanel')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      }
+    >
+      <div className="mx-auto w-full">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage>
+                {truncateTitle(selectedInboxItem?.title)}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </NewCardHeader>
+  ) : null;
 
   const rightHeader = selectedTask ? (
     <NewCardHeader
@@ -845,6 +929,13 @@ export function ProjectTasks() {
     </NewCardHeader>
   ) : null;
 
+  // Content for inbox item panel
+  const inboxContent = isInboxPanelOpen && selectedInboxItem ? (
+    <NewCard className="h-full min-h-0 flex flex-col bg-muted border-0">
+      <InboxItemPanel item={selectedInboxItem} onClose={handleClosePanel} />
+    </NewCard>
+  ) : null;
+
   const attemptContent = selectedTask ? (
     <NewCard className="h-full min-h-0 flex flex-col bg-muted border-0">
       {isTaskView ? (
@@ -893,6 +984,10 @@ export function ProjectTasks() {
       <div className="relative h-full w-full" />
     );
 
+  // Determine which panel content and header to show
+  const panelContent = isInboxPanelOpen ? inboxContent : attemptContent;
+  const panelHeader = isInboxPanelOpen ? inboxRightHeader : rightHeader;
+
   const attemptArea = (
     <GitOperationsProvider attemptId={attempt?.id}>
       <ClickedElementsProvider attempt={attempt}>
@@ -903,12 +998,12 @@ export function ProjectTasks() {
           >
             <TasksLayout
               kanban={kanbanContent}
-              attempt={attemptContent}
+              attempt={panelContent}
               aux={auxContent}
               isPanelOpen={isPanelOpen}
-              mode={mode}
+              mode={isInboxPanelOpen ? null : mode}
               isMobile={isMobile}
-              rightHeader={rightHeader}
+              rightHeader={panelHeader}
             />
           </ExecutionProcessesProvider>
         </ReviewProvider>
