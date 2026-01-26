@@ -212,7 +212,14 @@ function App() {
         <AuthGuard>
           <ClickedElementsProvider>
             <ProjectProvider>
-              <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+              <HotkeysProvider
+                initiallyActiveScopes={[
+                  'global',
+                  'workspace',
+                  'kanban',
+                  'projects',
+                ]}
+              >
                 <AppContent />
               </HotkeysProvider>
             </ProjectProvider>

@@ -37,6 +37,11 @@ pub fn router() -> Router<AppState> {
         // Org-scoped
         .route(shapes::PROJECTS.url, get(proxy_projects))
         .route(shapes::NOTIFICATIONS.url, get(proxy_notifications))
+        .route(
+            shapes::ORGANIZATION_MEMBERS.url,
+            get(proxy_organization_members),
+        )
+        .route(shapes::USERS.url, get(proxy_users))
         // Project-scoped
         .route(shapes::WORKSPACES.url, get(proxy_workspaces))
         .route(shapes::PROJECT_STATUSES.url, get(proxy_project_statuses))
@@ -46,9 +51,10 @@ pub fn router() -> Router<AppState> {
         .route(shapes::ISSUE_FOLLOWERS.url, get(proxy_issue_followers))
         .route(shapes::ISSUE_TAGS.url, get(proxy_issue_tags))
         .route(
-            shapes::ISSUE_DEPENDENCIES.url,
-            get(proxy_issue_dependencies),
+            shapes::ISSUE_RELATIONSHIPS.url,
+            get(proxy_issue_relationships),
         )
+        .route(shapes::PULL_REQUESTS.url, get(proxy_pull_requests))
         // Issue-scoped
         .route(shapes::ISSUE_COMMENTS.url, get(proxy_issue_comments))
         .route(
@@ -89,6 +95,42 @@ async fn proxy_notifications(
         &shapes::NOTIFICATIONS,
         &query.params,
         &[query.organization_id.to_string(), ctx.user.id.to_string()],
+    )
+    .await
+}
+
+async fn proxy_organization_members(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(query): Query<OrgShapeQuery>,
+) -> Result<Response, ProxyError> {
+    organization_members::assert_membership(state.pool(), query.organization_id, ctx.user.id)
+        .await
+        .map_err(|e| ProxyError::Authorization(e.to_string()))?;
+
+    proxy_table(
+        &state,
+        &shapes::ORGANIZATION_MEMBERS,
+        &query.params,
+        &[query.organization_id.to_string()],
+    )
+    .await
+}
+
+async fn proxy_users(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(query): Query<OrgShapeQuery>,
+) -> Result<Response, ProxyError> {
+    organization_members::assert_membership(state.pool(), query.organization_id, ctx.user.id)
+        .await
+        .map_err(|e| ProxyError::Authorization(e.to_string()))?;
+
+    proxy_table(
+        &state,
+        &shapes::USERS,
+        &query.params,
+        &[query.organization_id.to_string()],
     )
     .await
 }
@@ -245,7 +287,7 @@ async fn proxy_issue_comments(
     .await
 }
 
-async fn proxy_issue_dependencies(
+async fn proxy_issue_relationships(
     State(state): State<AppState>,
     Extension(ctx): Extension<RequestContext>,
     Path(project_id): Path<Uuid>,
@@ -257,7 +299,26 @@ async fn proxy_issue_dependencies(
 
     proxy_table(
         &state,
-        &shapes::ISSUE_DEPENDENCIES,
+        &shapes::ISSUE_RELATIONSHIPS,
+        &query.params,
+        &[project_id.to_string()],
+    )
+    .await
+}
+
+async fn proxy_pull_requests(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<RequestContext>,
+    Path(project_id): Path<Uuid>,
+    Query(query): Query<ShapeQuery>,
+) -> Result<Response, ProxyError> {
+    organization_members::assert_project_access(state.pool(), project_id, ctx.user.id)
+        .await
+        .map_err(|e| ProxyError::Authorization(e.to_string()))?;
+
+    proxy_table(
+        &state,
+        &shapes::PULL_REQUESTS,
         &query.params,
         &[project_id.to_string()],
     )

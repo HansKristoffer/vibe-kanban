@@ -46,6 +46,13 @@
       "VIBE_WORKSPACE_PATH": "${workspaceFolder}"
     }
   },
+  "dev_manager": {
+    "command": "npx",
+    "args": [
+      "dev-manager-mcp",
+      "stdio"
+    ]
+  },
   "meta": {
     "vibe_kanban": {
       "name": "Vibe Kanban",
@@ -82,6 +89,12 @@
       "description": "Capture screenshots and video recordings to document UI changes",
       "url": "https://www.vibekanban.com/docs/features/task-assets",
       "icon": "mcp/vibe_recorder_logo.svg"
+    },
+    "dev_manager": {
+      "name": "Dev Manager",
+      "description": "Launch and manage multiple dev servers in parallel with automatic port allocation",
+      "url": "https://github.com/BloopAI/dev-manager-mcp",
+      "icon": "mcp/dev_manager_logo.svg"
     }
   }
 }

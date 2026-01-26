@@ -18,17 +18,24 @@ mod electric_proxy;
 mod error;
 mod github_app;
 mod identity;
+mod issue_assignees;
 mod issue_comment_reactions;
 mod issue_comments;
+mod issue_followers;
+mod issue_relationships;
+mod issue_tags;
+mod issues;
 mod notifications;
 mod oauth;
 pub(crate) mod organization_members;
 mod organizations;
 mod project_statuses;
 mod projects;
+mod pull_requests;
 mod review;
 mod tags;
 mod tokens;
+mod workspaces;
 
 pub fn router(state: AppState) -> Router {
     let trace_layer = TraceLayer::new_for_http()
@@ -71,7 +78,14 @@ pub fn router(state: AppState) -> Router {
         .merge(tags::router())
         .merge(issue_comments::router())
         .merge(issue_comment_reactions::router())
+        .merge(issues::router())
+        .merge(issue_assignees::router())
+        .merge(issue_followers::router())
+        .merge(issue_tags::router())
+        .merge(issue_relationships::router())
+        .merge(pull_requests::router())
         .merge(notifications::router())
+        .merge(workspaces::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session,

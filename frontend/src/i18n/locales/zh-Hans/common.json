@@ -12,7 +12,13 @@
     "connect": "连接",
     "disconnect": "断开连接",
     "close": "关闭",
-    "replay": "重播"
+    "replay": "重播",
+    "discard": "放弃",
+    "addItem": "添加项目"
+  },
+  "form": {
+    "notSpecified": "未指定",
+    "selectOption": "选择一个选项..."
   },
   "states": {
     "loading": "加载中...",
@@ -156,7 +162,9 @@
     "noResults": "没有匹配的文件",
     "title": "文件",
     "showGitHubComments": "显示 GitHub 评论",
-    "hideGitHubComments": "隐藏 GitHub 评论"
+    "hideGitHubComments": "隐藏 GitHub 评论",
+    "prevGitHubComment": "上一个有评论的文件",
+    "nextGitHubComment": "下一个有评论的文件"
   },
   "sections": {
     "changes": "更改",
@@ -199,7 +207,8 @@
   "comments": {
     "addReviewComment": "添加审查评论",
     "addPlaceholder": "添加评论...",
-    "editPlaceholder": "编辑评论..."
+    "editPlaceholder": "编辑评论...",
+    "copyToReview": "复制到审查"
   },
   "confirm": {
     "defaultConfirm": "确认",
@@ -302,5 +311,18 @@
     "emptyTooltip": "上下文使用量将在下一次回复后显示",
     "tooltip": "上下文：{{percentage}}% · {{used}} / {{total}} tokens",
     "ariaLabel": "上下文使用量：{{percentage}}%"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "inWorkspace": "(在工作区中)",
+    "sequentialHint": "组合快捷键：先按第一个键，然后在500毫秒内按第二个键。",
+    "configurableHint": "可在 设置 → 常规 → 消息输入 中配置"
+  },
+  "typeahead": {
+    "tags": "标签",
+    "files": "文件",
+    "commands": "命令",
+    "noTagsOrFiles": "未找到标签或文件",
+    "noCommands": "此代理没有可用的命令。"
   }
 }

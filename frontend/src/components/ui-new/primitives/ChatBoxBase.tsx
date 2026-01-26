@@ -1,10 +1,12 @@
 import { type ReactNode } from 'react';
-import { CheckIcon, GearIcon } from '@phosphor-icons/react';
+import { CheckIcon, GearIcon, ImageIcon } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { toPrettyCase } from '@/utils/string';
 import WYSIWYGEditor from '@/components/ui/wysiwyg';
 import type { LocalImageMetadata } from '@/components/ui/wysiwyg/context/task-attempt-context';
+import { useUserSystem } from '@/components/ConfigProvider';
+import type { BaseCodingAgent } from 'shared/types';
 import { Toolbar, ToolbarDropdown } from './Toolbar';
 import {
   DropdownMenuItem,
@@ -31,6 +33,12 @@ export enum VisualVariant {
   PLAN = 'PLAN',
 }
 
+export interface DropzoneProps {
+  getRootProps: () => Record<string, unknown>;
+  getInputProps: () => Record<string, unknown>;
+  isDragActive: boolean;
+}
+
 interface ChatBoxBaseProps {
   // Editor
   editor: EditorProps;
@@ -39,6 +47,8 @@ interface ChatBoxBaseProps {
   disabled?: boolean;
   workspaceId?: string;
   projectId?: string;
+  repoId?: string;
+  executor?: BaseCodingAgent | null;
   autoFocus?: boolean;
 
   // Variant selection
@@ -76,6 +86,9 @@ interface ChatBoxBaseProps {
 
   // Local images for immediate preview (before saved to server)
   localImages?: LocalImageMetadata[];
+
+  // Dropzone props for drag-and-drop image uploads
+  dropzone?: DropzoneProps;
 }
 
 /**
@@ -89,6 +102,8 @@ export function ChatBoxBase({
   disabled,
   workspaceId,
   projectId,
+  repoId,
+  executor,
   autoFocus,
   variant,
   error,
@@ -102,16 +117,22 @@ export function ChatBoxBase({
   isRunning,
   focusKey,
   localImages,
+  dropzone,
 }: ChatBoxBaseProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['common', 'tasks']);
+  const { config } = useUserSystem();
   const variantLabel = toPrettyCase(variant?.selected || 'DEFAULT');
   const variantOptions = variant?.options ?? [];
 
+  const isDragActive = dropzone?.isDragActive ?? false;
+
   return (
     <div
+      {...(dropzone?.getRootProps() ?? {})}
       className={cn(
-        'flex w-chat max-w-full flex-col border-t',
-        '@chat:border-x @chat:rounded-t-md',
+        'flex w-chat max-w-full flex-col relative',
+        '@chat:rounded-t-md',
+        !isDragActive && 'border-t @chat:border-x',
         (visualVariant === VisualVariant.FEEDBACK ||
           visualVariant === VisualVariant.EDIT ||
           visualVariant === VisualVariant.PLAN) &&
@@ -119,6 +140,23 @@ export function ChatBoxBase({
         isRunning && 'chat-box-running'
       )}
     >
+      {dropzone && <input {...dropzone.getInputProps()} />}
+
+      {isDragActive && (
+        <div className="absolute inset-0 z-50 bg-primary/80 backdrop-blur-sm border-2 border-dashed border-brand @chat:rounded-t-md flex items-center justify-center pointer-events-none animate-in fade-in-0 duration-150">
+          <div className="text-center">
+            <div className="mx-auto mb-2 w-10 h-10 rounded-full bg-brand/10 flex items-center justify-center">
+              <ImageIcon className="h-5 w-5 text-brand" />
+            </div>
+            <p className="text-sm font-medium text-high">
+              {t('tasks:dropzone.dropImagesHere')}
+            </p>
+            <p className="text-xs text-low mt-0.5">
+              {t('tasks:dropzone.supportedFormats')}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Error alert */}
       {error && (
         <div className="bg-error/10 border-b px-double py-base">
@@ -132,7 +170,7 @@ export function ChatBoxBase({
       {/* Header - Stats and selector */}
       {visualVariant === VisualVariant.NORMAL && (
         <div className="flex items-center gap-base bg-secondary px-base py-[9px] @chat:rounded-t-md border-b">
-          <div className="flex flex-1 items-center gap-base text-sm">
+          <div className="flex flex-1 items-center gap-base text-sm min-w-0 overflow-hidden">
             {headerLeft}
           </div>
           <Toolbar className="gap-[9px]">{headerRight}</Toolbar>
@@ -148,12 +186,18 @@ export function ChatBoxBase({
           onChange={editor.onChange}
           onCmdEnter={onCmdEnter}
           disabled={disabled}
-          className="min-h-0 max-h-[50vh] overflow-y-auto"
+          // min-h-double ensures space for at least one line of text,
+          // preventing the absolutely-positioned placeholder from overlapping
+          // with the footer when the editor is empty
+          className="min-h-double max-h-[50vh] overflow-y-auto"
           workspaceId={workspaceId}
           projectId={projectId}
+          repoId={repoId}
+          executor={executor ?? null}
           autoFocus={autoFocus}
           onPasteFiles={onPasteFiles}
           localImages={localImages}
+          sendShortcut={config?.send_message_shortcut}
         />
 
         {/* Footer - Controls */}

@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   ChatBoxBase,
   VisualVariant,
+  type DropzoneProps,
   type EditorProps,
   type VariantProps,
 } from './ChatBoxBase';
@@ -37,10 +38,11 @@ interface CreateChatBoxProps {
   saveAsDefault?: SaveAsDefaultProps;
   error?: string | null;
   projectId?: string;
+  repoId?: string;
   agent?: BaseCodingAgent | null;
   onPasteFiles?: (files: File[]) => void;
-  /** Local images for immediate preview (before saved to server) */
   localImages?: LocalImageMetadata[];
+  dropzone?: DropzoneProps;
 }
 
 /**
@@ -56,9 +58,11 @@ export function CreateChatBox({
   saveAsDefault,
   error,
   projectId,
+  repoId,
   agent,
   onPasteFiles,
   localImages,
+  dropzone,
 }: CreateChatBoxProps) {
   const { t } = useTranslation('tasks');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,12 +99,15 @@ export function CreateChatBox({
       onCmdEnter={handleCmdEnter}
       disabled={isSending}
       projectId={projectId}
+      repoId={repoId}
+      executor={executor.selected}
       autoFocus
       variant={variant}
       error={error}
       visualVariant={VisualVariant.NORMAL}
       onPasteFiles={onPasteFiles}
       localImages={localImages}
+      dropzone={dropzone}
       headerLeft={
         <>
           <AgentIcon agent={agent} className="size-icon-xl" />

@@ -62,6 +62,7 @@ interface RepoCardProps {
   isPushSuccess?: boolean;
   isPushError?: boolean;
   uncommittedCount?: number;
+  isTargetRemote?: boolean;
   branchDropdownContent?: React.ReactNode;
   onChangeTarget?: () => void;
   onRebase?: () => void;
@@ -84,6 +85,7 @@ export function RepoCard({
   isPushSuccess = false,
   isPushError = false,
   uncommittedCount = 0,
+  isTargetRemote = false,
   branchDropdownContent,
   onChangeTarget,
   onRebase,
@@ -100,14 +102,15 @@ export function RepoCard({
   // Build action options based on state:
   // - Show "Commit" first when there are uncommitted changes
   // - Hide "Open pull request" when PR is already open OR when there are uncommitted changes
+  // - Hide "merge" option when PR is already open or target branch is remote
   const hasPrOpen = prStatus === 'open';
   const availableActionOptions = useMemo(() => {
-    let options = [...repoActionOptions];
-
-    // Filter out pull-request if PR is open or there are uncommitted changes
-    if (hasPrOpen || hasUncommittedChanges) {
-      options = options.filter((opt) => opt.value !== 'pull-request');
-    }
+    let options = repoActionOptions.filter((opt) => {
+      if (opt.value === 'pull-request' && (hasPrOpen || hasUncommittedChanges))
+        return false;
+      if (opt.value === 'merge' && (hasPrOpen || isTargetRemote)) return false;
+      return true;
+    });
 
     // Add commit option at the start if there are uncommitted changes
     if (hasUncommittedChanges) {
@@ -115,7 +118,7 @@ export function RepoCard({
     }
 
     return options;
-  }, [hasPrOpen, hasUncommittedChanges]);
+  }, [hasPrOpen, hasUncommittedChanges, isTargetRemote]);
 
   // Determine effective selected action based on available options
   const effectiveSelectedAction = useMemo(() => {

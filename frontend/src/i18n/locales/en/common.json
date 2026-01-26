@@ -12,7 +12,13 @@
     "connect": "Connect",
     "disconnect": "Disconnect",
     "close": "Close",
-    "replay": "Replay"
+    "replay": "Replay",
+    "discard": "Discard",
+    "addItem": "Add Item"
+  },
+  "form": {
+    "notSpecified": "Not specified",
+    "selectOption": "Select an option..."
   },
   "states": {
     "loading": "Loading...",
@@ -156,7 +162,9 @@
     "noResults": "No matching files",
     "title": "Files",
     "showGitHubComments": "Show GitHub comments",
-    "hideGitHubComments": "Hide GitHub comments"
+    "hideGitHubComments": "Hide GitHub comments",
+    "prevGitHubComment": "Previous file with comments",
+    "nextGitHubComment": "Next file with comments"
   },
   "sections": {
     "changes": "Changes",
@@ -205,7 +213,8 @@
   "comments": {
     "addReviewComment": "Add Review Comment",
     "addPlaceholder": "Add a comment...",
-    "editPlaceholder": "Edit comment..."
+    "editPlaceholder": "Edit comment...",
+    "copyToReview": "Copy to review"
   },
   "confirm": {
     "defaultConfirm": "Confirm",
@@ -308,5 +317,18 @@
     "emptyTooltip": "Context usage appears after the next reply",
     "tooltip": "Context: {{percentage}}% · {{used}} / {{total}} tokens",
     "ariaLabel": "Context usage: {{percentage}}%"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "inWorkspace": "(in workspace)",
+    "sequentialHint": "Sequential shortcuts: Press the first key, then the second within 500ms.",
+    "configurableHint": "Configurable in Settings → General → Message Input"
+  },
+  "typeahead": {
+    "tags": "Tags",
+    "files": "Files",
+    "commands": "Commands",
+    "noTagsOrFiles": "No tags or files found",
+    "noCommands": "No commands available for this agent."
   }
 }

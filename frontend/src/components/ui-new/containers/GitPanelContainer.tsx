@@ -75,6 +75,7 @@ export function GitPanelContainer({
           uncommittedCount:
             (repoStatus?.uncommitted_count ?? 0) +
             (repoStatus?.untracked_count ?? 0),
+          isTargetRemote: repoStatus?.is_target_remote ?? false,
         };
       }),
     [repos, branchStatus]
