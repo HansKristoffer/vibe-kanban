@@ -260,7 +260,6 @@ This allows the team to see task progress without needing to check the Vibe Kanb
 ## Environment Variables
 
 - `VK_PUBLIC_BASE_URL` - Base URL for webhook endpoints (required for Slack URLs to work)
-- `VK_ANTHROPIC_API_KEY` - For PRD generation
 - `VK_ANTHROPIC_MODEL` - Model for PRD generation (default: claude-3-5-sonnet-latest)
 
 ## Inbox UI Filtering

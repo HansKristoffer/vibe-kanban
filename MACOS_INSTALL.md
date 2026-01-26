@@ -9,7 +9,7 @@ Build and run Vibe Kanban as a background service on macOS.
 ```bash
 # 1. Configure environment variables
 cp .env.example .env
-# Edit .env with your values (required: VK_PUBLIC_BASE_URL, VK_ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+# Edit .env with your values (required: VK_PUBLIC_BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 
 # 2. Install & start service (handles everything automatically)
 sudo ./install-macos-service.sh
@@ -224,7 +224,6 @@ nano .env  # or your preferred editor
 | Variable | Description |
 |----------|-------------|
 | `VK_PUBLIC_BASE_URL` | Public URL where the service is accessible (e.g., `https://example.com`) |
-| `VK_ANTHROPIC_API_KEY` | Anthropic API key for AI features |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 

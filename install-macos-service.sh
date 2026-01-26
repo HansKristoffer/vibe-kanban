@@ -120,7 +120,6 @@ for arg in "$@"; do
             echo ""
             echo "Required variables (in .env):"
             echo "  VK_PUBLIC_BASE_URL      Public URL where the service is accessible"
-            echo "  VK_ANTHROPIC_API_KEY    Anthropic API key for AI features"
             echo "  GOOGLE_CLIENT_ID        Google OAuth client ID"
             echo "  GOOGLE_CLIENT_SECRET    Google OAuth client secret"
             echo ""
@@ -199,7 +198,6 @@ HOST="${HOST:-$DEFAULT_HOST}"
 # Required environment variables
 REQUIRED_VARS=(
     "VK_PUBLIC_BASE_URL"
-    "VK_ANTHROPIC_API_KEY"
     "GOOGLE_CLIENT_ID"
     "GOOGLE_CLIENT_SECRET"
 )
@@ -222,7 +220,6 @@ if [ ${#MISSING_VARS[@]} -gt 0 ]; then
     echo "or set them before running this script:"
     echo ""
     echo -e "  ${CYAN}VK_PUBLIC_BASE_URL=https://example.com \\\\${NC}"
-    echo -e "  ${CYAN}VK_ANTHROPIC_API_KEY=sk-ant-... \\\\${NC}"
     echo -e "  ${CYAN}GOOGLE_CLIENT_ID=... \\\\${NC}"
     echo -e "  ${CYAN}GOOGLE_CLIENT_SECRET=... \\\\${NC}"
     echo -e "  ${CYAN}sudo ./install-macos-service.sh${NC}"
@@ -578,8 +575,6 @@ if [ "$IS_UPDATE" = false ]; then
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>VK_PUBLIC_BASE_URL</key>
         <string>${VK_PUBLIC_BASE_URL}</string>
-        <key>VK_ANTHROPIC_API_KEY</key>
-        <string>${VK_ANTHROPIC_API_KEY}</string>
         <key>GOOGLE_CLIENT_ID</key>
         <string>${GOOGLE_CLIENT_ID}</string>
         <key>GOOGLE_CLIENT_SECRET</key>

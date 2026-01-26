@@ -194,7 +194,6 @@ Service: `crates/services/src/services/anthropic.rs`
 
 Environment:
 
-- `VK_ANTHROPIC_API_KEY`
 - `VK_ANTHROPIC_MODEL` (default: `claude-3-5-sonnet-latest`)
 
 Contract (returned JSON):
@@ -249,7 +248,6 @@ Integration helper: `crates/services/src/services/inbox_integrations.rs`
 ## Environment variables
 
 - `VK_PUBLIC_BASE_URL` (used for webhook URLs + action links)
-- `VK_ANTHROPIC_API_KEY`
 - `VK_ANTHROPIC_MODEL`
 
 ## PostHog + Sentry enrichment

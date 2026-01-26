@@ -85,7 +85,7 @@ export function ReposSettings() {
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
 
   // Fetch effective config for selected repo (includes vibekanban.json overrides)
-  const { data: effectiveConfig } = useQuery({
+  const { data: effectiveConfig, isLoading: effectiveConfigLoading } = useQuery({
     queryKey: ['repo-effective-config', selectedRepoId],
     queryFn: () => repoApi.getEffectiveConfig(selectedRepoId),
     enabled: !!selectedRepoId,
@@ -217,13 +217,19 @@ export function ReposSettings() {
 
     if (hasUnsavedChanges) return;
 
+    // Wait for effectiveConfig to load before setting draft to avoid
+    // showing database values before vibekanban.json overrides are applied
+    if (selectedRepoId && effectiveConfigLoading) {
+      return;
+    }
+
     // Use effective config values if available, otherwise fall back to repo values
     if (effectiveConfig && effectiveConfig.id === nextRepo.id) {
       setDraft(effectiveConfigToFormState(effectiveConfig));
     } else {
       setDraft(repoToFormState(nextRepo));
     }
-  }, [repos, selectedRepoId, hasUnsavedChanges, effectiveConfig, effectiveConfigToFormState]);
+  }, [repos, selectedRepoId, hasUnsavedChanges, effectiveConfig, effectiveConfigLoading, effectiveConfigToFormState]);
 
   // Warn on tab close/navigation with unsaved changes
   useEffect(() => {
@@ -256,10 +262,11 @@ export function ReposSettings() {
 
       const updatedRepo = await repoApi.update(selectedRepo.id, updateData);
       setSelectedRepo(updatedRepo);
-      setDraft(repoToFormState(updatedRepo));
       queryClient.setQueryData(['repos'], (old: Repo[] | undefined) =>
         old?.map((r) => (r.id === updatedRepo.id ? updatedRepo : r))
       );
+      // Invalidate effective-config to refetch with vibekanban.json overrides
+      await queryClient.invalidateQueries({ queryKey: ['repo-effective-config', selectedRepo.id] });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
@@ -273,7 +280,12 @@ export function ReposSettings() {
 
   const handleDiscard = () => {
     if (!selectedRepo) return;
-    setDraft(repoToFormState(selectedRepo));
+    // Use effective config values (includes vibekanban.json) if available
+    if (effectiveConfig && effectiveConfig.id === selectedRepo.id) {
+      setDraft(effectiveConfigToFormState(effectiveConfig));
+    } else {
+      setDraft(repoToFormState(selectedRepo));
+    }
   };
 
   const updateDraft = (updates: Partial<RepoScriptsFormState>) => {

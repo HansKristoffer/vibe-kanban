@@ -55,7 +55,7 @@ use uuid::Uuid;
 use crate::services::{
     git::{GitService, GitServiceError},
     notification::NotificationService,
-    repo_config::get_effective_repo,
+    repo_config::{get_effective_repo, get_effective_repos},
     workspace_manager::WorkspaceError as WorkspaceManagerError,
     worktree_manager::WorktreeError,
 };
@@ -1026,6 +1026,9 @@ pub trait ContainerService {
 
         let repos = WorkspaceRepo::find_repos_for_workspace(&self.db().pool, workspace.id).await?;
 
+        // Apply vibekanban.json config file overrides to get effective repos
+        let effective_repos = get_effective_repos(repos.clone());
+
         let workspace = Workspace::find_by_id(&self.db().pool, workspace.id)
             .await?
             .ok_or(SqlxError::RowNotFound)?;
@@ -1057,10 +1060,15 @@ pub trait ContainerService {
             task.to_prompt()
         };
 
-        let repos_with_setup: Vec<_> = repos.iter().filter(|r| r.setup_script.is_some()).collect();
+        let repos_with_setup: Vec<_> = effective_repos
+            .iter()
+            .filter(|r| r.setup_script.is_some())
+            .collect();
 
+        // Check parallel_setup_script on effective repos (includes config file overrides)
         let all_parallel = repos_with_setup.iter().all(|r| r.parallel_setup_script);
 
+        // Use original repos for cleanup (cleanup_actions_for_repos applies its own overrides)
         let cleanup_action = self.cleanup_actions_for_repos(&repos);
 
         let working_dir = workspace

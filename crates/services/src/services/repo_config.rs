@@ -234,8 +234,26 @@ pub fn collect_env_vars_for_repos(repos: &[Repo]) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
 
+    tracing::debug!(
+        "Collecting env vars from {} repositories",
+        repos.len()
+    );
+
     for repo in repos {
+        let config_path = repo.path.join(CONFIG_FILE_NAME);
+        tracing::debug!(
+            "Checking repo '{}' at path: {} (config exists: {})",
+            repo.name,
+            config_path.display(),
+            config_path.exists()
+        );
+
         if let Some(config) = try_read_repo_config(&repo.path) {
+            tracing::debug!(
+                "Config file loaded for repo '{}', env_vars: {:?}",
+                repo.name,
+                config.env_vars
+            );
             if let Some(env_vars) = config.env_vars {
                 for name in env_vars {
                     let trimmed = name.trim().to_string();
@@ -245,9 +263,16 @@ pub fn collect_env_vars_for_repos(repos: &[Repo]) -> Vec<String> {
                     }
                 }
             }
+        } else {
+            tracing::debug!(
+                "No config file found for repo '{}' at {}",
+                repo.name,
+                config_path.display()
+            );
         }
     }
 
+    tracing::debug!("Collected {} env vars: {:?}", result.len(), result);
     result
 }
 
@@ -276,6 +301,7 @@ mod tests {
             dev_server_script: Some("db-dev".to_string()),
             copy_files: Some(".env".to_string()),
             parallel_setup_script: false,
+            default_target_branch: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
