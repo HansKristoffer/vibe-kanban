@@ -139,6 +139,24 @@ export type Err<E> = { success: false; error: E | undefined; message?: string };
 // Result type for endpoints that need typed errors
 export type Result<T, E> = Ok<T> | Err<E>;
 
+// Workspace asset types
+export type WorkspaceAsset = {
+  id: string;
+  asset_type: 'screenshot' | 'video';
+  filename: string;
+  description: string | null;
+  related_files: string[];
+  captured_at: string;
+  duration_ms: number | null;
+  size_bytes: number | null;
+  url: string;
+};
+
+export type WorkspaceAssetsResponse = {
+  assets: WorkspaceAsset[];
+  total: number;
+};
+
 // Special handler for Result-returning endpoints
 const handleApiResponseAsResult = async <T, E>(
   response: Response
@@ -967,6 +985,28 @@ export const attemptsApi = {
       }
     );
     return handleApiResponse<void>(response);
+  },
+
+  // Workspace assets API
+  getAssets: async (attemptId: string): Promise<WorkspaceAssetsResponse> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/assets`
+    );
+    return handleApiResponse<WorkspaceAssetsResponse>(response);
+  },
+
+  getAsset: async (
+    attemptId: string,
+    assetId: string
+  ): Promise<WorkspaceAsset> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/assets/${assetId}`
+    );
+    return handleApiResponse<WorkspaceAsset>(response);
+  },
+
+  getAssetUrl: (attemptId: string, assetId: string): string => {
+    return `/api/task-attempts/${attemptId}/assets/${assetId}/file`;
   },
 };
 

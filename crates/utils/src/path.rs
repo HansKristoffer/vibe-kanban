@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 /// Directory name for storing images in worktrees
 pub const VIBE_IMAGES_DIR: &str = ".vibe-images";
 
+/// Directory name for storing task documentation assets (screenshots, videos) in worktrees
+pub const VIBE_ASSETS_DIR: &str = ".vibe-assets";
+
+/// Manifest filename for workspace assets
+pub const VIBE_ASSETS_MANIFEST: &str = "manifest.json";
+
 /// Convert absolute paths to relative paths based on worktree path
 /// This is a robust implementation that handles symlinks and edge cases
 pub fn make_path_relative(path: &str, worktree_path: &str) -> String {

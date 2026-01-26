@@ -29,6 +29,7 @@ use services::services::{
         self, CreatePrRequest, GitHostError, GitHostProvider, ProviderKind, UnifiedPrComment,
     },
     inbox_outbound::post_pr_ready_if_needed,
+    workspace_assets::{WorkspaceAssetService, format_assets_as_markdown},
 };
 use ts_rs::TS;
 use utils::response::ApiResponse;
@@ -45,6 +46,9 @@ pub struct CreatePrApiRequest {
     pub repo_id: Uuid,
     #[serde(default)]
     pub auto_generate_description: bool,
+    /// Optional list of asset IDs to include in the PR description
+    #[serde(default)]
+    pub asset_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -309,10 +313,37 @@ pub async fn create_pr(
 
     let provider = git_host.provider_kind();
 
+    // Build PR body, optionally including assets
+    let mut pr_body = request.body.clone().unwrap_or_default();
+
+    if !request.asset_ids.is_empty() {
+        // Get the base path for the workspace
+        let base_path = match workspace.agent_working_dir.as_deref() {
+            Some(dir) if !dir.is_empty() => workspace_path.join(dir),
+            _ => workspace_path.clone(),
+        };
+
+        let asset_service = WorkspaceAssetService::new();
+        if let Ok(all_assets) = asset_service.get_assets(&base_path) {
+            // Filter to only requested asset IDs
+            let selected_assets: Vec<_> = all_assets
+                .into_iter()
+                .filter(|a| request.asset_ids.contains(&a.id))
+                .collect();
+
+            if !selected_assets.is_empty() {
+                // Note: Assets are served via vibe-kanban API.
+                // For external visibility, a base_url config would be needed.
+                let assets_markdown = format_assets_as_markdown(&selected_assets, workspace.id, None);
+                pr_body.push_str(&assets_markdown);
+            }
+        }
+    }
+
     // Create the PR
     let pr_request = CreatePrRequest {
         title: request.title.clone(),
-        body: request.body.clone(),
+        body: if pr_body.is_empty() { None } else { Some(pr_body) },
         head_branch: workspace.branch.clone(),
         base_branch: base_branch.clone(),
         draft: request.draft,

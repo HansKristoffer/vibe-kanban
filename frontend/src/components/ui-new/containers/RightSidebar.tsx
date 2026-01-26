@@ -8,6 +8,7 @@ import { CreateModeProjectSectionContainer } from '@/components/ui-new/container
 import { CreateModeReposSectionContainer } from '@/components/ui-new/containers/CreateModeReposSectionContainer';
 import { CreateModeAddReposSectionContainer } from '@/components/ui-new/containers/CreateModeAddReposSectionContainer';
 import { WorkspaceNotesContainer } from '@/components/ui-new/containers/WorkspaceNotesContainer';
+import { WorkspaceAssetsContainer } from '@/components/ui-new/containers/WorkspaceAssetsContainer';
 import { useChangesView } from '@/contexts/ChangesViewContext';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { ArrowsOutSimpleIcon } from '@phosphor-icons/react';
@@ -78,6 +79,10 @@ export function RightSidebar({
   );
   const [notesExpanded] = usePersistedExpanded(
     PERSIST_KEYS.notesSection,
+    false
+  );
+  const [assetsExpanded] = usePersistedExpanded(
+    PERSIST_KEYS.assetsSection,
     false
   );
 
@@ -156,6 +161,14 @@ export function RightSidebar({
         visible: true,
         expanded: notesExpanded,
         content: <WorkspaceNotesContainer />,
+        actions: [],
+      },
+      {
+        title: t('common:sections.assets', 'Assets'),
+        persistKey: PERSIST_KEYS.assetsSection,
+        visible: true,
+        expanded: assetsExpanded,
+        content: <WorkspaceAssetsContainer />,
         actions: [],
       },
     ];

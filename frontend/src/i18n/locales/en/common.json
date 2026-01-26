@@ -171,7 +171,13 @@
     "other": "Other",
     "devServerPreview": "Dev Server Preview",
     "terminal": "Terminal",
-    "notes": "Notes"
+    "notes": "Notes",
+    "assets": "Assets"
+  },
+  "assets": {
+    "selectWorkspace": "Select a workspace to view assets",
+    "empty": "No assets captured yet",
+    "emptyHint": "The AI will capture screenshots and videos here when documenting UI changes"
   },
   "notes": {
     "placeholder": "Add notes about this workspace...",

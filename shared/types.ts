@@ -436,7 +436,11 @@ export type UpdateInboxItemRequest = { title: string | null, prd_markdown: strin
 
 export type AcceptInboxResponse = { task_id: string, };
 
-export type CreatePrApiRequest = { title: string, body: string | null, target_branch: string | null, draft: boolean | null, repo_id: string, auto_generate_description: boolean, };
+export type CreatePrApiRequest = { title: string, body: string | null, target_branch: string | null, draft: boolean | null, repo_id: string, auto_generate_description: boolean, 
+/**
+ * Optional list of asset IDs to include in the PR description
+ */
+asset_ids: Array<string>, };
 
 export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
 
