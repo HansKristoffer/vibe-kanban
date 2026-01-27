@@ -10,7 +10,15 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
+  // Check if auth is disabled (set via vite config from env)
+  const authDisabled = import.meta.env.VITE_AUTH_DISABLED === 'true';
+
   const { data: session, isLoading } = useAuthSession();
+
+  // Bypass authentication when auth is disabled
+  if (authDisabled) {
+    return <>{children}</>;
+  }
 
   if (isLoading) {
     return (

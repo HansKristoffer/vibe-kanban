@@ -52,7 +52,15 @@ pub async fn get_projects(
     State(deployment): State<DeploymentImpl>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_by_member_email(&deployment.db().pool, &user.email).await?;
+    // Return all projects when auth is disabled
+    let projects = if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        Project::find_all(&deployment.db().pool).await?
+    } else {
+        Project::find_by_member_email(&deployment.db().pool, &user.email).await?
+    };
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 

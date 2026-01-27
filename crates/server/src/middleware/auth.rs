@@ -27,9 +27,23 @@ pub struct AuthenticatedUser {
 pub async fn require_authenticated_user(
     State(deployment): State<DeploymentImpl>,
     headers: HeaderMap,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    // Check if auth is disabled via environment variable
+    if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        request.extensions_mut().insert(AuthenticatedUser {
+            id: Uuid::nil(),
+            email: "local@user".to_string(),
+            name: Some("Local User".to_string()),
+            picture_url: None,
+        });
+        return Ok(next.run(request).await);
+    }
+
     let Some(session_id) = extract_session_cookie(&headers) else {
         return Err(StatusCode::UNAUTHORIZED);
     };
@@ -52,7 +66,6 @@ pub async fn require_authenticated_user(
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
-    let mut request = request;
     request.extensions_mut().insert(AuthenticatedUser {
         id: user.id,
         email: user.email,

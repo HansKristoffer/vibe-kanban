@@ -386,7 +386,16 @@ fn google_oauth_config() -> Result<GoogleOAuthConfig, ApiError> {
 
 /// Validates that all required Google OAuth environment variables are set.
 /// Call this at server startup to fail fast if misconfigured.
+/// Skips validation when AUTH_DISABLED is set.
 pub fn validate_oauth_config() -> Result<(), String> {
+    // Skip OAuth validation when auth is disabled
+    if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
     let mut missing = Vec::new();
     if std::env::var("GOOGLE_CLIENT_ID").is_err() {
         missing.push("GOOGLE_CLIENT_ID");

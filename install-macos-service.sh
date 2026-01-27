@@ -128,6 +128,7 @@ for arg in "$@"; do
             echo "  HOST              Server host (default: 0.0.0.0; auto: 127.0.0.1 with Funnel)"
             echo "  TAILSCALE_FUNNEL  Set to 1 to enable Tailscale Funnel for public HTTPS"
             echo "  AUTO_UPDATE       Set to 0 to disable auto-update daemon (default: 1)"
+            echo "  AUTH_DISABLED     Set to 1 to disable authentication (no Google login needed)"
             echo ""
             echo "Example:"
             echo "  sudo ./install-macos-service.sh"
@@ -195,12 +196,18 @@ if [ "$ENABLE_TAILSCALE_FUNNEL" = true ] && [ "$HOST_WAS_SET" = false ]; then
 fi
 HOST="${HOST:-$DEFAULT_HOST}"
 
-# Required environment variables
-REQUIRED_VARS=(
-    "VK_PUBLIC_BASE_URL"
-    "GOOGLE_CLIENT_ID"
-    "GOOGLE_CLIENT_SECRET"
-)
+# Required environment variables (Google OAuth not required when AUTH_DISABLED)
+if is_truthy "${AUTH_DISABLED:-}"; then
+    REQUIRED_VARS=(
+        "VK_PUBLIC_BASE_URL"
+    )
+else
+    REQUIRED_VARS=(
+        "VK_PUBLIC_BASE_URL"
+        "GOOGLE_CLIENT_ID"
+        "GOOGLE_CLIENT_SECRET"
+    )
+fi
 
 # Check required environment variables
 MISSING_VARS=()
@@ -576,9 +583,11 @@ if [ "$IS_UPDATE" = false ]; then
         <key>VK_PUBLIC_BASE_URL</key>
         <string>${VK_PUBLIC_BASE_URL}</string>
         <key>GOOGLE_CLIENT_ID</key>
-        <string>${GOOGLE_CLIENT_ID}</string>
+        <string>${GOOGLE_CLIENT_ID:-}</string>
         <key>GOOGLE_CLIENT_SECRET</key>
-        <string>${GOOGLE_CLIENT_SECRET}</string>
+        <string>${GOOGLE_CLIENT_SECRET:-}</string>
+        <key>AUTH_DISABLED</key>
+        <string>${AUTH_DISABLED:-}</string>
     </dict>
 </dict>
 </plist>

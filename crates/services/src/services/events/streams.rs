@@ -178,7 +178,15 @@ impl EventService {
         }
 
         // Get initial snapshot of projects for this user
-        let projects = Project::find_by_member_email(&self.db.pool, user_email).await?;
+        // Return all projects when auth is disabled
+        let auth_disabled = std::env::var("AUTH_DISABLED")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+        let projects = if auth_disabled {
+            Project::find_all(&self.db.pool).await?
+        } else {
+            Project::find_by_member_email(&self.db.pool, user_email).await?
+        };
         let initial_msg = build_projects_snapshot(projects);
 
         let db_pool = self.db.pool.clone();
@@ -190,10 +198,19 @@ impl EventService {
                 let db_pool = db_pool.clone();
                 let user_email = user_email.clone();
                 async move {
+                    // Check if auth is disabled (for filtering bypass)
+                    let auth_disabled = std::env::var("AUTH_DISABLED")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
+
                     match msg_result {
                         Ok(LogMsg::JsonPatch(patch)) => {
                             if let Some(patch_op) = patch.0.first() {
                                 if patch_op.path() == "/projects" {
+                                    // Skip filtering when auth is disabled
+                                    if auth_disabled {
+                                        return Some(Ok(LogMsg::JsonPatch(patch)));
+                                    }
                                     let allowed_ids =
                                         ProjectMember::list_project_ids_for_email(&db_pool, &user_email)
                                             .await
@@ -223,6 +240,10 @@ impl EventService {
                                 }
 
                                 if patch_op.path().starts_with("/projects/") {
+                                    // Skip filtering when auth is disabled
+                                    if auth_disabled {
+                                        return Some(Ok(LogMsg::JsonPatch(patch)));
+                                    }
                                     match patch_op {
                                         json_patch::PatchOperation::Add(op) => {
                                             if let Ok(project) =

@@ -607,6 +607,14 @@ async fn ensure_project_member(
     project_id: Uuid,
     email: &str,
 ) -> Result<(), ApiError> {
+    // Skip membership check when auth is disabled
+    if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
     if email.is_empty() {
         return Err(ApiError::Unauthorized);
     }

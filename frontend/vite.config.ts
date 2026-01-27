@@ -94,12 +94,18 @@ export default defineConfig({
       ".ngrok.app", // allow all ngrok tunnels
       ".ngrok-free.app", // allow ngrok free tier tunnels,
       ".eu.ngrok.io", // allow ei.ngrok.io tunnels
-      ".ts.net", // allow all Tailscale MagicDNS domains,
-      "mac-mini-hans"
+      ".ts.net", // allow all Tailscale MagicDNS domains
     ],
   },
   optimizeDeps: {
     exclude: ["wa-sqlite"],
   },
   build: { sourcemap: true },
+  define: {
+    'import.meta.env.VITE_AUTH_DISABLED': JSON.stringify(
+      process.env.AUTH_DISABLED === '1' || process.env.AUTH_DISABLED === 'true'
+        ? 'true'
+        : 'false'
+    ),
+  },
 });

@@ -25,17 +25,24 @@ pub async fn load_project_middleware(
         .cloned()
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    match db::models::project_member::ProjectMember::is_member(
-        &deployment.db().pool,
-        project_id,
-        &user.email,
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => return Err(StatusCode::FORBIDDEN),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
+    // Skip membership check when auth is disabled
+    let auth_disabled = std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
+
+    if !auth_disabled {
+        match db::models::project_member::ProjectMember::is_member(
+            &deployment.db().pool,
+            project_id,
+            &user.email,
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => return Err(StatusCode::FORBIDDEN),
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        };
+    }
 
     // Load the project from the database
     let project = match Project::find_by_id(&deployment.db().pool, project_id).await {
@@ -83,17 +90,24 @@ pub async fn load_task_middleware(
         }
     };
 
-    match db::models::project_member::ProjectMember::is_member(
-        &deployment.db().pool,
-        task.project_id,
-        &user.email,
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => return Err(StatusCode::FORBIDDEN),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
+    // Skip membership check when auth is disabled
+    let auth_disabled = std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
+
+    if !auth_disabled {
+        match db::models::project_member::ProjectMember::is_member(
+            &deployment.db().pool,
+            task.project_id,
+            &user.email,
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => return Err(StatusCode::FORBIDDEN),
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        };
+    }
 
     // Insert both models as extensions
     let mut request = request;

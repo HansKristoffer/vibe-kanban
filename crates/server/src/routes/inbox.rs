@@ -408,6 +408,14 @@ async fn ensure_project_member(
     project_id: Uuid,
     email: &str,
 ) -> Result<(), ApiError> {
+    // Skip membership check when auth is disabled
+    if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
     match ProjectMember::is_member(pool, project_id, email).await {
         Ok(true) => Ok(()),
         Ok(false) => Err(ApiError::Forbidden("Access denied".to_string())),
