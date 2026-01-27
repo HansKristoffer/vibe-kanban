@@ -94,6 +94,8 @@ export default defineConfig({
       ".ngrok.app", // allow all ngrok tunnels
       ".ngrok-free.app", // allow ngrok free tier tunnels,
       ".eu.ngrok.io", // allow ei.ngrok.io tunnels
+      ".ts.net", // allow all Tailscale MagicDNS domains,
+      "mac-mini-hans"
     ],
   },
   optimizeDeps: {
