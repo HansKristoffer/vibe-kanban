@@ -325,6 +325,62 @@ Common issues:
 - **Git credentials missing**: Ensure git can pull without prompting for credentials
 - **Repo path invalid**: The stored repo path may be outdated. Reinstall the service.
 
+### "Too many open files" error
+
+If you see this error in the logs when running many concurrent agent sessions:
+```
+accept error: Too many open files (os error 24)
+```
+
+macOS has multiple layers of file descriptor limits that are low by default:
+- **System-wide kernel limit** (`kern.maxfiles`): default 12,288
+- **Per-process kernel limit** (`kern.maxfilesperproc`): default 10,240
+- **Per-process soft/hard limits**: default 256
+
+**New installations** automatically configure both:
+1. System-wide limits via `/Library/LaunchDaemons/com.vibekanban.maxfiles.plist` (soft: 65536, hard: 524288)
+2. Per-process limits in the LaunchAgent plist
+
+**For existing installations**, reinstall to apply the fix:
+```bash
+sudo ./install-macos-service.sh --force
+```
+
+**Manual fix (if reinstall isn't possible):**
+
+1. Increase system-wide limits immediately:
+   ```bash
+   sudo launchctl limit maxfiles 65536 524288
+   ```
+
+2. Add resource limits to your plist (`~/Library/LaunchAgents/com.vibekanban.server.plist`):
+
+   ```xml
+   <key>SoftResourceLimits</key>
+   <dict>
+       <key>NumberOfFiles</key>
+       <integer>65536</integer>
+   </dict>
+   <key>HardResourceLimits</key>
+   <dict>
+       <key>NumberOfFiles</key>
+       <integer>65536</integer>
+   </dict>
+   ```
+
+3. Restart the service:
+   ```bash
+   launchctl unload ~/Library/LaunchAgents/com.vibekanban.server.plist
+   launchctl load ~/Library/LaunchAgents/com.vibekanban.server.plist
+   ```
+
+**Check current limits:**
+```bash
+launchctl limit maxfiles              # System-wide limits
+ulimit -n                             # Shell session limit
+sysctl kern.maxfiles kern.maxfilesperproc  # Kernel limits
+```
+
 ---
 
 ## Script Options

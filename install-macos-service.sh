@@ -572,6 +572,16 @@ if [ "$IS_UPDATE" = false ]; then
     <string>${WORK_DIR}/vibe-kanban.log</string>
     <key>StandardErrorPath</key>
     <string>${WORK_DIR}/vibe-kanban.error.log</string>
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOST</key>
