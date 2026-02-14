@@ -182,6 +182,17 @@ async fn get_session(
     State(deployment): State<DeploymentImpl>,
     headers: HeaderMap,
 ) -> Result<ResponseJson<ApiResponse<AuthSessionResponse>>, ApiError> {
+    // When auth is disabled, always return authenticated
+    if std::env::var("AUTH_DISABLED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return Ok(ResponseJson(ApiResponse::success(AuthSessionResponse {
+            authenticated: true,
+            user: None,
+        })));
+    }
+
     let user = load_user_from_headers(&deployment, &headers).await?;
     Ok(ResponseJson(ApiResponse::success(AuthSessionResponse {
         authenticated: user.is_some(),

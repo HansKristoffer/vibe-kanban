@@ -21,15 +21,9 @@ use db::models::{
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-use services::services::{
-    file_search::SearchQuery, project::ProjectServiceError,
-    remote_client::CreateRemoteProjectPayload,
-};
+use services::services::{file_search::SearchQuery, project::ProjectServiceError};
 use ts_rs::TS;
-use utils::{
-    api::projects::{RemoteProject, RemoteProjectMembersResponse},
-    response::ApiResponse,
-};
+use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
@@ -538,7 +532,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             get(get_project).put(update_project).delete(delete_project),
         )
         .route("/members", get(list_project_members).post(add_project_member).delete(remove_project_member))
-        .route("/remote/members", get(get_project_remote_members))
         .route("/search", get(search_project_files))
         .route("/open-editor", post(open_project_in_editor))
         .route(

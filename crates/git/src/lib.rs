@@ -1700,19 +1700,6 @@ impl GitService {
             .map_err(GitServiceError::from)
     }
 
-    pub fn fetch_branch(
-        &self,
-        repo_path: &Path,
-        remote_url: &str,
-        branch_name: &str,
-    ) -> Result<(), GitServiceError> {
-        let git_cli = GitCli::new();
-        let refspec = format!("+refs/heads/{branch_name}:refs/heads/{branch_name}");
-        git_cli
-            .fetch_with_refspec(repo_path, remote_url, &refspec)
-            .map_err(GitServiceError::from)
-    }
-
     pub fn resolve_remote_for_branch(
         &self,
         repo_path: &Path,

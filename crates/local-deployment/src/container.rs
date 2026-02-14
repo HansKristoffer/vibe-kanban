@@ -43,7 +43,10 @@ use executors::{
     },
     approvals::{ExecutorApprovalService, NoopExecutorApprovalService},
     env::{ExecutionEnv, RepoContext},
-    executors::{BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal},
+    executors::{
+        BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
+        StandardCodingAgentExecutor,
+    },
     logs::{NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch},
 };
 use futures::{FutureExt, TryStreamExt, stream::select};
@@ -1810,9 +1813,15 @@ impl ContainerService for LocalContainerService {
             // Get allowed env var names from vibekanban.json files
             let allowed_names = collect_env_vars_for_repos(&repos);
 
+            // Get the project ID from the workspace's parent task
+            let task = workspace
+                .parent_task(&self.db.pool)
+                .await?
+                .ok_or_else(|| ContainerError::Other(anyhow!("Task not found for workspace")))?;
+
             // Get configured values from the database
             let env_values =
-                ProjectEnvVar::get_values_for_names(&self.db.pool, project.id, &allowed_names)
+                ProjectEnvVar::get_values_for_names(&self.db.pool, task.project_id, &allowed_names)
                     .await?;
 
             // Inject into execution environment

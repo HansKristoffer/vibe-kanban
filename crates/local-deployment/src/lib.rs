@@ -343,6 +343,25 @@ impl LocalDeployment {
             .map(|state| (state.provider, state.app_verifier))
     }
 
+    pub async fn spawn_pr_monitor_service(&self) -> tokio::task::JoinHandle<()> {
+        let db = self.db.clone();
+        let analytics = self
+            .analytics
+            .as_ref()
+            .map(|analytics_service| AnalyticsContext {
+                user_id: self.user_id.clone(),
+                analytics_service: analytics_service.clone(),
+            });
+        let container = self.container.clone();
+        let remote_client = self.remote_client.clone().ok();
+        PrMonitorService::spawn(db, analytics, container, remote_client).await
+    }
+
+    pub async fn spawn_inbox_poller_service(&self) -> tokio::task::JoinHandle<()> {
+        let db = self.db.clone();
+        services::services::inbox_poller::InboxPollerService::spawn(db).await
+    }
+
     pub fn pty(&self) -> &PtyService {
         &self.pty
     }
