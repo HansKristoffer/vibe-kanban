@@ -3,7 +3,10 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::{
+    analytics::AnalyticsService,
     auth::{JwtService, OAuthHandoffService, OAuthTokenValidator, ProviderRegistry},
+    azure_blob::AzureBlobService,
+    billing::BillingService,
     config::RemoteServerConfig,
     github_app::GitHubAppService,
     mail::Mailer,
@@ -21,7 +24,10 @@ pub struct AppState {
     handoff: Arc<OAuthHandoffService>,
     oauth_token_validator: Arc<OAuthTokenValidator>,
     r2: Option<R2Service>,
+    azure_blob: Option<AzureBlobService>,
     github_app: Option<Arc<GitHubAppService>>,
+    billing: BillingService,
+    analytics: Option<AnalyticsService>,
 }
 
 impl AppState {
@@ -36,7 +42,10 @@ impl AppState {
         server_public_base_url: String,
         http_client: reqwest::Client,
         r2: Option<R2Service>,
+        azure_blob: Option<AzureBlobService>,
         github_app: Option<Arc<GitHubAppService>>,
+        billing: BillingService,
+        analytics: Option<AnalyticsService>,
     ) -> Self {
         Self {
             pool,
@@ -48,7 +57,10 @@ impl AppState {
             handoff,
             oauth_token_validator,
             r2,
+            azure_blob,
             github_app,
+            billing,
+            analytics,
         }
     }
 
@@ -80,7 +92,19 @@ impl AppState {
         self.r2.as_ref()
     }
 
+    pub fn azure_blob(&self) -> Option<&AzureBlobService> {
+        self.azure_blob.as_ref()
+    }
+
     pub fn github_app(&self) -> Option<&GitHubAppService> {
         self.github_app.as_deref()
+    }
+
+    pub fn billing(&self) -> &BillingService {
+        &self.billing
+    }
+
+    pub fn analytics(&self) -> Option<&AnalyticsService> {
+        self.analytics.as_ref()
     }
 }

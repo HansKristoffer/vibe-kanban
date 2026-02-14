@@ -6,21 +6,32 @@ use axum::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use super::{error::ErrorResponse, organization_members::ensure_project_access};
+use super::{
+    error::{ErrorResponse, db_error},
+    organization_members::ensure_project_access,
+};
+use api_types::{DeleteResponse, MutationResponse};
 use crate::{
     AppState,
     auth::RequestContext,
-    db::{
-        tags::{Tag, TagRepository},
-        types::is_valid_hsl_color,
-    },
-    define_mutation_router,
-    entities::{CreateTagRequest, ListTagsQuery, ListTagsResponse, UpdateTagRequest},
-    mutation_types::{DeleteResponse, MutationResponse},
+    db::{tags::TagRepository, types::is_valid_hsl_color},
+    mutation_definition::MutationBuilder,
 };
+use api_types::{CreateTagRequest, ListTagsQuery, ListTagsResponse, Tag, UpdateTagRequest};
 
-// Generate router that references handlers below
-define_mutation_router!(Tag, table: "tags");
+/// Mutation definition for Tags - provides both router and TypeScript metadata.
+pub fn mutation() -> MutationBuilder<Tag, CreateTagRequest, UpdateTagRequest> {
+    MutationBuilder::new("tags")
+        .list(list_tags)
+        .get(get_tag)
+        .create(create_tag)
+        .update(update_tag)
+        .delete(delete_tag)
+}
+
+pub fn router() -> axum::Router<AppState> {
+    mutation().router()
+}
 
 #[instrument(
     name = "tags.list_tags",
@@ -96,7 +107,7 @@ async fn create_tag(
     .await
     .map_err(|error| {
         tracing::error!(?error, "failed to create tag");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        db_error(error, "failed to create tag")
     })?;
 
     Ok(Json(response))

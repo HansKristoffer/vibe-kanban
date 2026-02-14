@@ -1,5 +1,4 @@
 import {
-  createContext,
   useContext,
   useState,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useCallback,
   ReactNode,
 } from 'react';
+import { createHmrContext } from '@/lib/hmrContext.ts';
 import { useLocation, useParams } from 'react-router-dom';
 
 interface SearchState {
@@ -18,7 +18,10 @@ interface SearchState {
   registerInputRef: (ref: HTMLInputElement | null) => void;
 }
 
-const SearchContext = createContext<SearchState | null>(null);
+const SearchContext = createHmrContext<SearchState | null>(
+  'SearchContext',
+  null
+);
 
 interface SearchProviderProps {
   children: ReactNode;
@@ -31,7 +34,9 @@ export function SearchProvider({ children }: SearchProviderProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Check if we're on a tasks route
-  const isTasksRoute = /^\/projects\/[^/]+\/tasks/.test(location.pathname);
+  const isTasksRoute = /^\/local-projects\/[^/]+\/tasks/.test(
+    location.pathname
+  );
 
   // Clear search when leaving tasks pages
   useEffect(() => {

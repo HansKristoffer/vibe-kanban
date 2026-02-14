@@ -11,6 +11,9 @@
 - `scripts/`: Dev helpers (ports, DB preparation).
 - `docs/`: Documentation files.
 
+### Crate-specific guides
+- [`crates/remote/AGENTS.md`](crates/remote/AGENTS.md) — Remote server architecture, ElectricSQL integration, mutation patterns, environment variables.
+
 ## Managing Shared Types Between Rust and TypeScript
 
 ts-rs allows you to derive TypeScript types from Rust structs/enums. By annotating your Rust types with #[derive(TS)] and related macros, ts-rs will generate .ts declaration files for those types.
@@ -28,9 +31,6 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 - Prepare SQLx (offline): `pnpm run prepare-db`
 - Prepare SQLx (remote package, postgres): `pnpm run remote:prepare-db`
 - Local NPX build: `pnpm run build:npx` then `pnpm pack` in `npx-cli/`
-
-## Automated QA
-- When testing changes by running the application, you should prefer `pnpm run dev:qa` over `pnpm run dev`, which starts the application in a dedicated mode that is optimised for QA testing
 
 ## Coding Style & Naming Conventions
 - Rust: `rustfmt` enforced (`rustfmt.toml`); group imports by crate; snake_case modules, PascalCase types.

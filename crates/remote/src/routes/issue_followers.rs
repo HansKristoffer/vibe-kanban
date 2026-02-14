@@ -6,21 +6,33 @@ use axum::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use super::{error::ErrorResponse, organization_members::ensure_issue_access};
+use super::{
+    error::{ErrorResponse, db_error},
+    organization_members::ensure_issue_access,
+};
+use api_types::{DeleteResponse, MutationResponse};
 use crate::{
     AppState,
     auth::RequestContext,
-    db::issue_followers::{IssueFollower, IssueFollowerRepository},
-    define_mutation_router,
-    entities::{
-        CreateIssueFollowerRequest, ListIssueFollowersQuery, ListIssueFollowersResponse,
-        UpdateIssueFollowerRequest,
-    },
-    mutation_types::{DeleteResponse, MutationResponse},
+    db::issue_followers::IssueFollowerRepository,
+    mutation_definition::{MutationBuilder, NoUpdate},
+};
+use api_types::{
+    CreateIssueFollowerRequest, IssueFollower, ListIssueFollowersQuery, ListIssueFollowersResponse,
 };
 
-// Generate router that references handlers below
-define_mutation_router!(IssueFollower, table: "issue_followers");
+/// Mutation definition for IssueFollower - provides both router and TypeScript metadata.
+pub fn mutation() -> MutationBuilder<IssueFollower, CreateIssueFollowerRequest, NoUpdate> {
+    MutationBuilder::new("issue_followers")
+        .list(list_issue_followers)
+        .get(get_issue_follower)
+        .create(create_issue_follower)
+        .delete(delete_issue_follower)
+}
+
+pub fn router() -> axum::Router<AppState> {
+    mutation().router()
+}
 
 #[instrument(
     name = "issue_followers.list_issue_followers",
@@ -94,27 +106,10 @@ async fn create_issue_follower(
     .await
     .map_err(|error| {
         tracing::error!(?error, "failed to create issue follower");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        db_error(error, "failed to create issue follower")
     })?;
 
     Ok(Json(response))
-}
-
-#[instrument(
-    name = "issue_followers.update_issue_follower",
-    skip(_state, _ctx, _payload),
-    fields(issue_follower_id = %_issue_follower_id)
-)]
-async fn update_issue_follower(
-    State(_state): State<AppState>,
-    Extension(_ctx): Extension<RequestContext>,
-    Path(_issue_follower_id): Path<Uuid>,
-    Json(_payload): Json<UpdateIssueFollowerRequest>,
-) -> Result<Json<MutationResponse<IssueFollower>>, ErrorResponse> {
-    Err(ErrorResponse::new(
-        StatusCode::METHOD_NOT_ALLOWED,
-        "issue followers cannot be updated, only created or deleted",
-    ))
 }
 
 #[instrument(

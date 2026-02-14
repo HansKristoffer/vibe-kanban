@@ -4,9 +4,6 @@ import { ProcessListContainer } from '@/components/ui-new/containers/ProcessList
 import { PreviewControlsContainer } from '@/components/ui-new/containers/PreviewControlsContainer';
 import { GitPanelContainer } from '@/components/ui-new/containers/GitPanelContainer';
 import { TerminalPanelContainer } from '@/components/ui-new/containers/TerminalPanelContainer';
-import { CreateModeProjectSectionContainer } from '@/components/ui-new/containers/CreateModeProjectSectionContainer';
-import { CreateModeReposSectionContainer } from '@/components/ui-new/containers/CreateModeReposSectionContainer';
-import { CreateModeAddReposSectionContainer } from '@/components/ui-new/containers/CreateModeAddReposSectionContainer';
 import { WorkspaceNotesContainer } from '@/components/ui-new/containers/WorkspaceNotesContainer';
 import { WorkspaceAssetsContainer } from '@/components/ui-new/containers/WorkspaceAssetsContainer';
 import { useChangesView } from '@/contexts/ChangesViewContext';
@@ -38,14 +35,12 @@ type SectionDef = {
 };
 
 export interface RightSidebarProps {
-  isCreateMode: boolean;
   rightMainPanelMode: RightMainPanelMode | null;
   selectedWorkspace: Workspace | undefined;
   repos: RepoWithTargetBranch[];
 }
 
 export function RightSidebar({
-  isCreateMode,
   rightMainPanelMode,
   selectedWorkspace,
   repos,
@@ -103,34 +98,7 @@ export function RightSidebar({
 
   const upperExpanded = getUpperExpanded();
 
-  const sections: SectionDef[] = isCreateMode
-    ? [
-        {
-          title: t('common:sections.project'),
-          persistKey: PERSIST_KEYS.gitPanelProject,
-          visible: true,
-          expanded: true,
-          content: <CreateModeProjectSectionContainer />,
-          actions: [],
-        },
-        {
-          title: t('common:sections.repositories'),
-          persistKey: PERSIST_KEYS.gitPanelRepositories,
-          visible: true,
-          expanded: true,
-          content: <CreateModeReposSectionContainer />,
-          actions: [],
-        },
-        {
-          title: t('common:sections.addRepositories'),
-          persistKey: PERSIST_KEYS.gitPanelAddRepositories,
-          visible: true,
-          expanded: true,
-          content: <CreateModeAddReposSectionContainer />,
-          actions: [],
-        },
-      ]
-    : buildWorkspaceSections();
+  const sections: SectionDef[] = buildWorkspaceSections();
 
   function buildWorkspaceSections(): SectionDef[] {
     const result: SectionDef[] = [

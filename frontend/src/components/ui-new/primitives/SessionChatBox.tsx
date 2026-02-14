@@ -10,13 +10,16 @@ import {
   TrashIcon,
   WarningIcon,
   ArrowUpIcon,
+  ArrowsOutIcon,
+  GithubLogoIcon,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import type {
-  BaseCodingAgent,
-  Session,
-  TodoItem,
-  TokenUsageInfo,
+import {
+  BaseAgentCapability,
+  type BaseCodingAgent,
+  type Session,
+  type TodoItem,
+  type TokenUsageInfo,
 } from 'shared/types';
 import type { LocalImageMetadata } from '@/components/ui/wysiwyg/context/task-attempt-context';
 import { formatDateShortWithTime } from '@/utils/date';
@@ -48,6 +51,7 @@ import {
 import { type ExecutorProps } from './CreateChatBox';
 import { ContextUsageGauge } from './ContextUsageGauge';
 import { TodoProgressPopup } from './TodoProgressPopup';
+import { useUserSystem } from '@/components/ConfigProvider';
 
 // Re-export shared types
 export type { EditorProps, VariantProps } from './ChatBoxBase';
@@ -91,6 +95,7 @@ interface StatsProps {
   linesRemoved?: number;
   hasConflicts?: boolean;
   conflictedFilesCount?: number;
+  onResolveConflicts?: () => void;
 }
 
 interface FeedbackModeProps {
@@ -140,14 +145,16 @@ interface SessionChatBoxProps {
   reviewComments?: ReviewCommentsProps;
   toolbarActions?: ToolbarActionsProps;
   error?: string | null;
-  workspaceId?: string;
+  repoIds?: string[];
   projectId?: string;
   agent?: BaseCodingAgent | null;
   executor?: ExecutorProps;
   todos?: TodoItem[];
   inProgressTodo?: TodoItem | null;
   localImages?: LocalImageMetadata[];
+  onPrCommentClick?: () => void;
   onViewCode?: () => void;
+  onOpenWorkspace?: () => void;
   onScrollToPreviousMessage?: () => void;
   tokenUsageInfo?: TokenUsageInfo | null;
   dropzone?: DropzoneProps;
@@ -170,20 +177,26 @@ export function SessionChatBox({
   reviewComments,
   toolbarActions,
   error,
-  workspaceId,
+  repoIds,
   projectId,
   agent,
   executor,
   todos,
   inProgressTodo,
   localImages,
+  onPrCommentClick,
   onViewCode,
+  onOpenWorkspace,
   onScrollToPreviousMessage,
   tokenUsageInfo,
   dropzone,
 }: SessionChatBoxProps) {
   const { t } = useTranslation('tasks');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { capabilities } = useUserSystem();
+
+  const supportsContextUsage =
+    agent && capabilities?.[agent]?.includes(BaseAgentCapability.CONTEXT_USAGE);
 
   // Determine if in feedback mode, edit mode, or approval mode
   const isInFeedbackMode = feedbackMode?.isActive ?? false;
@@ -511,7 +524,7 @@ export function SessionChatBox({
       placeholder={placeholder}
       onCmdEnter={handleCmdEnter}
       disabled={isDisabled}
-      workspaceId={workspaceId}
+      repoIds={repoIds}
       projectId={projectId}
       executor={agent || executor?.selected}
       autoFocus={true}
@@ -563,9 +576,11 @@ export function SessionChatBox({
               ) : (
                 <>
                   {stats?.hasConflicts && (
-                    <span
-                      className="flex items-center gap-1 text-warning text-sm min-w-0"
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-warning text-sm min-w-0 cursor-pointer hover:underline"
                       title={t('conversation.approval.conflictWarning')}
+                      onClick={stats.onResolveConflicts}
                     >
                       <WarningIcon className="size-icon-sm flex-shrink-0" />
                       <span className="truncate">
@@ -573,14 +588,45 @@ export function SessionChatBox({
                           count: stats.conflictedFilesCount,
                         })}
                       </span>
-                    </span>
+                    </button>
                   )}
-                  <PrimaryButton
-                    variant="tertiary"
-                    onClick={onViewCode}
-                    className="min-w-0"
-                  >
-                    <span className="text-sm space-x-half whitespace-nowrap truncate">
+                  {onOpenWorkspace ? (
+                    <PrimaryButton
+                      variant="secondary"
+                      onClick={onOpenWorkspace}
+                      value="Open Workspace"
+                      actionIcon={ArrowsOutIcon}
+                      className="min-w-0"
+                    />
+                  ) : onViewCode ? (
+                    <PrimaryButton
+                      variant="tertiary"
+                      onClick={onViewCode}
+                      className="min-w-0"
+                    >
+                      <span className="text-sm space-x-half whitespace-nowrap truncate">
+                        <span>
+                          {t('diff.filesChanged', { count: filesChanged })}
+                        </span>
+                        {(linesAdded !== undefined ||
+                          linesRemoved !== undefined) && (
+                          <span className="space-x-half">
+                            {linesAdded !== undefined && (
+                              <span className="text-success">
+                                +{linesAdded}
+                              </span>
+                            )}
+                            {linesRemoved !== undefined && (
+                              <span className="text-error">
+                                -{linesRemoved}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    </PrimaryButton>
+                  ) : (
+                    <span className="text-sm text-low space-x-half whitespace-nowrap truncate min-w-0">
                       <span>
                         {t('diff.filesChanged', { count: filesChanged })}
                       </span>
@@ -596,7 +642,7 @@ export function SessionChatBox({
                         </span>
                       )}
                     </span>
-                  </PrimaryButton>
+                  )}
                 </>
               )}
             </>
@@ -621,7 +667,9 @@ export function SessionChatBox({
           )}
           {/* Todo progress popup - always rendered, disabled when no todos */}
           <TodoProgressPopup todos={todos ?? []} />
-          <ContextUsageGauge tokenUsageInfo={tokenUsageInfo} />
+          {supportsContextUsage && (
+            <ContextUsageGauge tokenUsageInfo={tokenUsageInfo} />
+          )}
           <ToolbarDropdown
             label={sessionLabel}
             disabled={isInFeedbackMode || isInEditMode || isInApprovalMode}
@@ -650,9 +698,15 @@ export function SessionChatBox({
                     }
                     onClick={() => onSelectSession(s.id)}
                   >
-                    {index === 0
-                      ? t('conversation.sessions.latest')
-                      : formatDateShortWithTime(s.created_at)}
+                    <span className="flex items-center gap-1.5">
+                      <AgentIcon
+                        agent={s.executor as BaseCodingAgent}
+                        className="size-icon shrink-0"
+                      />
+                      {index === 0
+                        ? t('conversation.sessions.latest')
+                        : formatDateShortWithTime(s.created_at)}
+                    </span>
                   </DropdownMenuItem>
                 ))}
               </>
@@ -681,6 +735,15 @@ export function SessionChatBox({
             className="hidden"
             onChange={handleFileInputChange}
           />
+          {onPrCommentClick && (
+            <ToolbarIconButton
+              icon={GithubLogoIcon}
+              aria-label="Add PR Comments"
+              title="Insert PR comments into message"
+              onClick={onPrCommentClick}
+              disabled={isDisabled || isRunning}
+            />
+          )}
           {toolbarActions?.actions.map((action) => {
             const icon = action.icon;
             // Skip special icons in toolbar (only standard phosphor icons)

@@ -821,6 +821,7 @@ export function TaskFollowUpSection({
                 onChange={handleEditorChange}
                 disabled={!isEditable}
                 onPasteFiles={handlePasteFiles}
+                repoIds={repos.map((r) => r.id)}
                 projectId={projectId}
                 executor={latestProfileId?.executor ?? null}
                 taskAttemptId={workspaceId}

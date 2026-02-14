@@ -9,6 +9,7 @@ pub mod image;
 pub mod inbox_item;
 pub mod inbox_source_cursor;
 pub mod merge;
+pub mod migration_state;
 pub mod project;
 pub mod project_member;
 pub mod project_env_var;

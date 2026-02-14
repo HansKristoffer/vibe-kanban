@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use api_types::LoginStatus;
 use axum::{
     Json, Router,
     body::Body,
@@ -32,7 +33,7 @@ use services::services::{
 };
 use tokio::fs;
 use ts_rs::TS;
-use utils::{api::oauth::LoginStatus, assets::config_path, log_msg::LogMsg, response::ApiResponse};
+use utils::{assets::config_path, log_msg::LogMsg, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, routes::auth::AuthUserDto};
@@ -105,7 +106,12 @@ async fn get_user_system_info(
     headers: HeaderMap,
 ) -> ResponseJson<ApiResponse<UserSystemInfo>> {
     let config = deployment.config().read().await;
-    let login_status = deployment.get_login_status().await;
+    let login_status = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        deployment.get_login_status(),
+    )
+    .await
+    .unwrap_or(LoginStatus::LoggedOut);
     let current_user = match crate::middleware::extract_session_cookie(&headers) {
         Some(session_id) => {
             let pool = &deployment.db().pool;
@@ -156,7 +162,7 @@ async fn update_config(
     let config_path = config_path();
 
     // Validate git branch prefix
-    if !utils::git::is_valid_branch_prefix(&new_config.git_branch_prefix) {
+    if !git::is_valid_branch_prefix(&new_config.git_branch_prefix) {
         return ResponseJson(ApiResponse::error(
             "Invalid git branch prefix. Must be a valid git branch name component without slashes.",
         ));

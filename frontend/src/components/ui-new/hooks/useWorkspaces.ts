@@ -29,6 +29,8 @@ export interface SidebarWorkspace {
   prStatus?: 'open' | 'merged' | 'closed' | 'unknown';
   projectId?: string;
   projectName?: string;
+  prNumber?: number;
+  prUrl?: string;
 }
 
 // Keep the old export name for backwards compatibility
@@ -76,6 +78,9 @@ function toSidebarWorkspace(
     // Project info from summary
     projectId: summary?.project_id ?? undefined,
     projectName: summary?.project_name ?? undefined,
+    prNumber:
+      summary?.pr_number != null ? Number(summary.pr_number) : undefined,
+    prUrl: summary?.pr_url ?? undefined,
   };
 }
 

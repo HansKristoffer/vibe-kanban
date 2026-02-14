@@ -3,8 +3,11 @@ import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 // CSS is now imported by design scope components (LegacyDesignScope, NewDesignScope)
 import { ClickToComponent } from 'click-to-react-component';
-import { VibeKanbanWebCompanion } from 'vibe-kanban-web-companion';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryCache,
+} from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
 import i18n from './i18n';
 import posthog from 'posthog-js';
@@ -19,21 +22,23 @@ import {
   matchRoutes,
 } from 'react-router-dom';
 
-Sentry.init({
-  dsn: 'https://1065a1d276a581316999a07d5dffee26@o4509603705192449.ingest.de.sentry.io/4509605576441937',
-  tracesSampleRate: 1.0,
-  environment: import.meta.env.MODE === 'development' ? 'dev' : 'production',
-  integrations: [
-    Sentry.reactRouterV6BrowserTracingIntegration({
-      useEffect: React.useEffect,
-      useLocation,
-      useNavigationType,
-      createRoutesFromChildren,
-      matchRoutes,
-    }),
-  ],
-});
-Sentry.setTag('source', 'frontend');
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    tracesSampleRate: 1.0,
+    environment: import.meta.env.MODE === 'development' ? 'dev' : 'production',
+    integrations: [
+      Sentry.reactRouterV6BrowserTracingIntegration({
+        useEffect: React.useEffect,
+        useLocation,
+        useNavigationType,
+        createRoutesFromChildren,
+        matchRoutes,
+      }),
+    ],
+  });
+  Sentry.setTag('source', 'frontend');
+}
 
 if (
   import.meta.env.VITE_POSTHOG_API_KEY &&
@@ -53,7 +58,17 @@ if (
   );
 }
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      console.error('[React Query Error]', {
+        queryKey: query.queryKey,
+        error: error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
@@ -71,7 +86,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           showDialog
         >
           <ClickToComponent />
-          <VibeKanbanWebCompanion />
           <App />
           {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
           {/* <ReactQueryDevtools initialIsOpen={false} /> */}

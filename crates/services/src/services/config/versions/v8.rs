@@ -17,6 +17,10 @@ fn default_pr_auto_description_enabled() -> bool {
     true
 }
 
+fn default_commit_reminder_enabled() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub enum SendMessageShortcut {
     #[default]
@@ -31,6 +35,8 @@ pub struct Config {
     pub executor_profile: ExecutorProfileId,
     pub disclaimer_acknowledged: bool,
     pub onboarding_acknowledged: bool,
+    #[serde(default)]
+    pub remote_onboarding_acknowledged: bool,
     pub notifications: NotificationConfig,
     pub editor: EditorConfig,
     pub github: GitHubConfig,
@@ -48,12 +54,10 @@ pub struct Config {
     pub pr_auto_description_enabled: bool,
     #[serde(default)]
     pub pr_auto_description_prompt: Option<String>,
+    #[serde(default = "default_commit_reminder_enabled")]
+    pub commit_reminder_enabled: bool,
     #[serde(default)]
-    pub beta_workspaces: bool,
-    #[serde(default)]
-    pub beta_workspaces_invitation_sent: bool,
-    #[serde(default)]
-    pub commit_reminder: bool,
+    pub commit_reminder_prompt: Option<String>,
     #[serde(default)]
     pub send_message_shortcut: SendMessageShortcut,
 }
@@ -69,6 +73,7 @@ impl Config {
             executor_profile: old_config.executor_profile,
             disclaimer_acknowledged: old_config.disclaimer_acknowledged,
             onboarding_acknowledged: old_config.onboarding_acknowledged,
+            remote_onboarding_acknowledged: false,
             notifications: old_config.notifications,
             editor: old_config.editor,
             github: old_config.github,
@@ -81,9 +86,8 @@ impl Config {
             showcases: old_config.showcases,
             pr_auto_description_enabled: true,
             pr_auto_description_prompt: None,
-            beta_workspaces: false,
-            beta_workspaces_invitation_sent: false,
-            commit_reminder: false,
+            commit_reminder_enabled: true,
+            commit_reminder_prompt: None,
             send_message_shortcut: SendMessageShortcut::default(),
         }
     }
@@ -123,6 +127,7 @@ impl Default for Config {
             executor_profile: ExecutorProfileId::new(BaseCodingAgent::ClaudeCode),
             disclaimer_acknowledged: false,
             onboarding_acknowledged: false,
+            remote_onboarding_acknowledged: false,
             notifications: NotificationConfig::default(),
             editor: EditorConfig::default(),
             github: GitHubConfig::default(),
@@ -135,9 +140,8 @@ impl Default for Config {
             showcases: ShowcaseState::default(),
             pr_auto_description_enabled: true,
             pr_auto_description_prompt: None,
-            beta_workspaces: false,
-            beta_workspaces_invitation_sent: false,
-            commit_reminder: false,
+            commit_reminder_enabled: true,
+            commit_reminder_prompt: None,
             send_message_shortcut: SendMessageShortcut::default(),
         }
     }

@@ -1,5 +1,5 @@
 # Rust
-/target
+target/
 **/*.rs.bk
 
 # Node.js
@@ -87,3 +87,4 @@ vibe-kanban-cloud/
 .jj
 
 .pnpm-store/
+.sisyphus/

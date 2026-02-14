@@ -6,23 +6,34 @@ use axum::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use super::{error::ErrorResponse, organization_members::ensure_member_access};
+use super::{
+    error::{ErrorResponse, db_error},
+    organization_members::ensure_member_access,
+};
+use api_types::{DeleteResponse, MutationResponse};
 use crate::{
     AppState,
     auth::RequestContext,
-    db::{
-        projects::{Project, ProjectRepository},
-        types::is_valid_hsl_color,
-    },
-    define_mutation_router,
-    entities::{
-        CreateProjectRequest, ListProjectsQuery, ListProjectsResponse, UpdateProjectRequest,
-    },
-    mutation_types::{DeleteResponse, MutationResponse},
+    db::{projects::ProjectRepository, types::is_valid_hsl_color},
+    mutation_definition::MutationBuilder,
+};
+use api_types::{
+    CreateProjectRequest, ListProjectsQuery, ListProjectsResponse, Project, UpdateProjectRequest,
 };
 
-// Generate router that references handlers below
-define_mutation_router!(Project, table: "projects");
+/// Mutation definition for Projects - provides both router and TypeScript metadata.
+pub fn mutation() -> MutationBuilder<Project, CreateProjectRequest, UpdateProjectRequest> {
+    MutationBuilder::new("projects")
+        .list(list_projects)
+        .get(get_project)
+        .create(create_project)
+        .update(update_project)
+        .delete(delete_project)
+}
+
+pub fn router() -> axum::Router<AppState> {
+    mutation().router()
+}
 
 #[instrument(
     name = "projects.list_projects",
@@ -98,8 +109,19 @@ async fn create_project(
     .await
     .map_err(|error| {
         tracing::error!(?error, "failed to create project");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        db_error(error, "failed to create project")
     })?;
+
+    if let Some(analytics) = state.analytics() {
+        analytics.track(
+            ctx.user.id,
+            "project_created",
+            serde_json::json!({
+                "project_id": response.data.id,
+                "organization_id": response.data.organization_id,
+            }),
+        );
+    }
 
     Ok(Json(response))
 }

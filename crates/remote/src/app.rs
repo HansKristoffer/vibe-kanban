@@ -6,10 +6,14 @@ use tracing::instrument;
 
 use crate::{
     AppState,
+    analytics::{AnalyticsConfig, AnalyticsService},
+    attachments::cleanup::spawn_cleanup_task,
     auth::{
         GitHubOAuthProvider, GoogleOAuthProvider, JwtService, OAuthHandoffService,
         OAuthTokenValidator, ProviderRegistry,
     },
+    azure_blob::AzureBlobService,
+    billing::BillingService,
     config::RemoteServerConfig,
     db,
     github_app::GitHubAppService,
@@ -23,10 +27,10 @@ pub struct Server;
 impl Server {
     #[instrument(
         name = "remote_server",
-        skip(config),
+        skip(config, billing),
         fields(listen_addr = %config.listen_addr)
     )]
-    pub async fn run(config: RemoteServerConfig) -> anyhow::Result<()> {
+    pub async fn run(config: RemoteServerConfig, billing: BillingService) -> anyhow::Result<()> {
         let pool = db::create_pool(&config.database_url)
             .await
             .context("failed to create postgres pool")?;
@@ -95,6 +99,15 @@ impl Server {
             );
         }
 
+        let azure_blob = config.azure_blob.as_ref().map(AzureBlobService::new);
+        if azure_blob.is_some() {
+            tracing::info!("Azure Blob storage service initialized");
+        } else {
+            tracing::info!(
+                "Azure Blob storage not configured. Set AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY to enable issue attachments."
+            );
+        }
+
         let http_client = reqwest::Client::builder()
             .user_agent("VibeKanbanRemote/1.0")
             .build()
@@ -124,6 +137,29 @@ impl Server {
             }
         };
 
+        if billing.is_configured() {
+            tracing::info!("Billing provider configured");
+        } else {
+            tracing::info!("Billing provider not configured");
+        }
+
+        let analytics = match AnalyticsConfig::from_env() {
+            Some(analytics_config) => {
+                tracing::info!("PostHog analytics configured");
+                Some(AnalyticsService::new(analytics_config))
+            }
+            None => {
+                tracing::info!(
+                    "PostHog analytics not configured (POSTHOG_API_KEY and/or POSTHOG_API_ENDPOINT not set)"
+                );
+                None
+            }
+        };
+
+        if let Some(ref azure_blob_service) = azure_blob {
+            spawn_cleanup_task(pool.clone(), azure_blob_service.clone());
+        }
+
         let state = AppState::new(
             pool.clone(),
             config.clone(),
@@ -134,7 +170,10 @@ impl Server {
             server_public_base_url,
             http_client,
             r2,
+            azure_blob,
             github_app,
+            billing,
+            analytics,
         );
 
         let router = routes::router(state);

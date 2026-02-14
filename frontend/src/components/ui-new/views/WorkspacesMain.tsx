@@ -120,6 +120,8 @@ export function WorkspacesMain({
                 filesChanged={diffStats?.filesChanged ?? 0}
                 linesAdded={diffStats?.linesAdded ?? 0}
                 linesRemoved={diffStats?.linesRemoved ?? 0}
+                disableViewCode={false}
+                showOpenWorkspaceButton={false}
                 onScrollToPreviousMessage={onScrollToPreviousMessage}
                 onScrollToBottom={onScrollToBottom}
               />

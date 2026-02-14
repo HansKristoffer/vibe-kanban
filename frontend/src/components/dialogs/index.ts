@@ -1,9 +1,4 @@
 // Global app dialogs
-export { DisclaimerDialog } from './global/DisclaimerDialog';
-export {
-  OnboardingDialog,
-  type OnboardingResult,
-} from './global/OnboardingDialog';
 export { ReleaseNotesDialog } from './global/ReleaseNotesDialog';
 export { OAuthDialog } from './global/OAuthDialog';
 
@@ -16,6 +11,11 @@ export {
   InviteMemberDialog,
   type InviteMemberResult,
 } from './org/InviteMemberDialog';
+export {
+  CreateRemoteProjectDialog,
+  type CreateRemoteProjectDialogProps,
+  type CreateRemoteProjectResult,
+} from './org/CreateRemoteProjectDialog';
 
 // Project-related dialogs
 export {
@@ -27,10 +27,6 @@ export {
   ProjectEditorSelectionDialog,
   type ProjectEditorSelectionDialogProps,
 } from './projects/ProjectEditorSelectionDialog';
-export {
-  LinkProjectDialog,
-  type LinkProjectResult,
-} from './projects/LinkProjectDialog';
 
 // Task-related dialogs
 export {

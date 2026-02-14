@@ -37,17 +37,6 @@ use crate::{
     routes::{project_env_vars, project_integrations},
 };
 
-#[derive(Deserialize, TS)]
-pub struct LinkToExistingRequest {
-    pub remote_project_id: Uuid,
-}
-
-#[derive(Deserialize, TS)]
-pub struct CreateRemoteProjectRequest {
-    pub organization_id: Uuid,
-    pub name: String,
-}
-
 pub async fn get_projects(
     State(deployment): State<DeploymentImpl>,
     Extension(user): Extension<AuthenticatedUser>,
@@ -115,122 +104,6 @@ pub async fn get_project(
     Extension(project): Extension<Project>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
     Ok(ResponseJson(ApiResponse::success(project)))
-}
-
-pub async fn link_project_to_existing_remote(
-    Extension(project): Extension<Project>,
-    State(deployment): State<DeploymentImpl>,
-    Json(payload): Json<LinkToExistingRequest>,
-) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
-    let client = deployment.remote_client()?;
-
-    let remote_project = client.get_project(payload.remote_project_id).await?;
-
-    let updated_project = apply_remote_project_link(&deployment, project, remote_project).await?;
-
-    Ok(ResponseJson(ApiResponse::success(updated_project)))
-}
-
-pub async fn create_and_link_remote_project(
-    Extension(project): Extension<Project>,
-    State(deployment): State<DeploymentImpl>,
-    Json(payload): Json<CreateRemoteProjectRequest>,
-) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
-    let repo_name = payload.name.trim().to_string();
-    if repo_name.trim().is_empty() {
-        return Err(ApiError::Conflict(
-            "Remote project name cannot be empty.".to_string(),
-        ));
-    }
-
-    let client = deployment.remote_client()?;
-
-    let remote_project = client
-        .create_project(&CreateRemoteProjectPayload {
-            organization_id: payload.organization_id,
-            name: repo_name,
-            metadata: None,
-        })
-        .await?;
-
-    let updated_project = apply_remote_project_link(&deployment, project, remote_project).await?;
-
-    Ok(ResponseJson(ApiResponse::success(updated_project)))
-}
-
-pub async fn unlink_project(
-    Extension(project): Extension<Project>,
-    State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
-    let updated_project = deployment
-        .project()
-        .unlink_from_remote(&deployment.db().pool, &project)
-        .await?;
-
-    Ok(ResponseJson(ApiResponse::success(updated_project)))
-}
-
-pub async fn get_remote_project_by_id(
-    State(deployment): State<DeploymentImpl>,
-    Path(remote_project_id): Path<Uuid>,
-) -> Result<ResponseJson<ApiResponse<RemoteProject>>, ApiError> {
-    let client = deployment.remote_client()?;
-
-    let remote_project = client.get_project(remote_project_id).await?;
-
-    Ok(ResponseJson(ApiResponse::success(remote_project)))
-}
-
-pub async fn get_project_remote_members(
-    State(deployment): State<DeploymentImpl>,
-    Extension(project): Extension<Project>,
-) -> Result<ResponseJson<ApiResponse<RemoteProjectMembersResponse>>, ApiError> {
-    let remote_project_id = project.remote_project_id.ok_or_else(|| {
-        ApiError::Conflict("Project is not linked to a remote project".to_string())
-    })?;
-
-    let client = deployment.remote_client()?;
-
-    let remote_project = client.get_project(remote_project_id).await?;
-    let members = client
-        .list_members(remote_project.organization_id)
-        .await?
-        .members;
-
-    Ok(ResponseJson(ApiResponse::success(
-        RemoteProjectMembersResponse {
-            organization_id: remote_project.organization_id,
-            members,
-        },
-    )))
-}
-
-async fn apply_remote_project_link(
-    deployment: &DeploymentImpl,
-    project: Project,
-    remote_project: RemoteProject,
-) -> Result<Project, ApiError> {
-    if project.remote_project_id.is_some() {
-        return Err(ApiError::Conflict(
-            "Project is already linked to a remote project. Unlink it first.".to_string(),
-        ));
-    }
-
-    let updated_project = deployment
-        .project()
-        .link_to_remote(&deployment.db().pool, project.id, remote_project)
-        .await?;
-
-    deployment
-        .track_if_analytics_allowed(
-            "project_linked_to_remote",
-            serde_json::json!({
-                "project_id": project.id.to_string(),
-            }),
-        )
-        .await;
-
-    Ok(updated_project)
 }
 
 pub async fn create_project(
@@ -669,11 +542,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/search", get(search_project_files))
         .route("/open-editor", post(open_project_in_editor))
         .route(
-            "/link",
-            post(link_project_to_existing_remote).delete(unlink_project),
-        )
-        .route("/link/create", post(create_and_link_remote_project))
-        .route(
             "/repositories",
             get(get_project_repositories).post(add_project_repository),
         )
@@ -693,8 +561,5 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/stream/ws", get(stream_projects_ws))
         .nest("/{id}", project_id_router);
 
-    Router::new().nest("/projects", projects_router).route(
-        "/remote-projects/{remote_project_id}",
-        get(get_remote_project_by_id),
-    )
+    Router::new().nest("/projects", projects_router)
 }

@@ -1,4 +1,7 @@
 {
+  "editorNames": {
+    "custom": "自訂"
+  },
   "buttons": {
     "save": "儲存",
     "cancel": "取消",
@@ -14,7 +17,8 @@
     "close": "關閉",
     "replay": "重播",
     "discard": "放棄",
-    "addItem": "新增項目"
+    "addItem": "新增項目",
+    "reply": "回覆"
   },
   "form": {
     "notSpecified": "未指定",
@@ -48,6 +52,7 @@
     "taskCompleted": "任務完成",
     "ran": "執行了",
     "tool": "工具",
+    "thinking": "思考中",
     "toolSummary": {
       "read": "讀取 {{path}}",
       "searched": "搜尋 \"{{query}}\"",
@@ -56,7 +61,10 @@
       "createdTask": "建立任務：{{description}}",
       "todoOperation": "{{operation}} 待辦事項"
     },
-    "fixScript": "修復腳本"
+    "fixScript": "修復腳本",
+    "subagent": {
+      "defaultType": "子代理"
+    }
   },
   "folderPicker": {
     "legend": "點擊資料夾名稱進行導覽 • 使用操作按鈕進行選擇",
@@ -91,8 +99,15 @@
     "menuItem": "組織",
     "loadingPlaceholder": "載入組織中...",
     "selectPlaceholder": "選擇組織",
-    "currentBadge": "（目前）"
+    "currentBadge": "（目前）",
+    "organizations": "組織",
+    "createOrganization": "建立組織",
+    "orgSettings": "組織設定",
+    "migrate": "遷移"
   },
+  "ok": "確定",
+  "error": "錯誤",
+  "signIn": "登入",
   "signOut": "登出",
   "devMode": {
     "banner": "開發模式 - 這是開發版本"
@@ -135,12 +150,14 @@
     "active": "活躍",
     "archived": "已封存",
     "loading": "載入中...",
+    "notFound": "找不到工作區",
     "selectToStart": "選擇一個工作區開始",
     "draft": "草稿",
     "viewArchive": "檢視封存",
     "backToActive": "返回活躍",
     "noArchived": "沒有已封存的工作區",
     "noWorkspaces": "沒有工作區",
+    "newWorkspace": "新工作區",
     "needsAttention": "需要關注",
     "idle": "閒置",
     "running": "執行中",
@@ -155,6 +172,21 @@
       "placeholder": "輸入工作區名稱",
       "action": "重新命名",
       "renaming": "正在重新命名..."
+    },
+    "unlinkFromIssue": "從問題取消關聯",
+    "deleteWorkspace": "刪除工作區",
+    "unlink": "取消關聯",
+    "delete": "刪除",
+    "unlinkConfirmMessage": "確定要將此工作區與問題取消關聯嗎？工作區仍將存在，但不再與此問題關聯。",
+    "deleteConfirmMessage": "確定要刪除此工作區嗎？這將取消與問題的關聯並刪除本地工作區。此操作無法復原。",
+    "unlinkError": "取消關聯工作區失敗",
+    "deleteError": "刪除工作區失敗",
+    "filesChanged": "{{count}} 個檔案",
+    "deleteDialog": {
+      "title": "刪除工作區",
+      "description": "確定要刪除此工作區嗎？此操作無法復原。",
+      "deleteBranchLabel": "刪除分支",
+      "cannotDeleteOpenPr": "PR 開啟時無法刪除分支"
     }
   },
   "fileTree": {
@@ -224,7 +256,9 @@
   "commandBar": {
     "noResults": "找不到結果。",
     "back": "返回",
-    "defaultPlaceholder": "輸入命令或搜尋..."
+    "defaultPlaceholder": "輸入命令或搜尋...",
+    "selectBranch": "Select Branch",
+    "selectBranchFor": "Select Branch for {{repoName}}"
   },
   "chatBox": {
     "variants": "變體",
@@ -322,7 +356,123 @@
     "tags": "標籤",
     "files": "檔案",
     "commands": "指令",
+    "chooseRepo": "選擇儲存庫",
+    "selectedRepo": "已選擇儲存庫：{{repoName}}",
+    "missingRepo": "所選儲存庫已無法使用。",
     "noTagsOrFiles": "找不到標籤或檔案",
     "noCommands": "此代理沒有可用的指令。"
+  },
+  "kanban": {
+    "noStatusesFound": "找不到此專案的狀態",
+    "noVisibleStatuses": "所有狀態已隱藏。請使用顯示設定或切換到其他標籤頁查看問題。",
+    "noProjectFound": "找不到專案",
+    "noOrganizationFound": "找不到組織",
+    "unassigned": "未指派",
+    "noTagsAvailable": "無可用標籤",
+    "createNewIssue": "建立新問題",
+    "createNewTag": "建立新標籤",
+    "searchTags": "搜尋標籤...",
+    "selectColorFor": "選擇顏色：",
+    "createTag": "建立",
+    "filesCount": "{{count}} 個檔案",
+    "attachmentsTitle": "附件 ({{count}})",
+    "deleteAttachmentAria": "刪除 {{filename}}",
+    "noPrCreated": "未建立 PR",
+    "noCommentsYet": "尚無評論",
+    "createdBy": "建立者",
+    "comments": "評論",
+    "enterCommentPlaceholder": "在此輸入評論...",
+    "attachImage": "附加圖片",
+    "attachFile": "附加檔案",
+    "attachFileHint": "附加檔案（每個檔案最大 20MB）",
+    "attach": "附加",
+    "dropImagesHere": "將圖片拖放到這裡",
+    "dropFilesHere": "將檔案拖放到這裡",
+    "imageDropHint": "PNG、JPG、GIF，最大 20MB",
+    "fileDropHint": "任意檔案類型，最大 20MB",
+    "unknownFile": "未知檔案",
+    "unknownUser": "未知使用者",
+    "deletedUser": "已刪除使用者",
+    "replyQuotePrefix": "寫道：",
+    "moreActions": "更多操作",
+    "closePanel": "關閉面板",
+    "issueTitlePlaceholder": "問題標題...",
+    "issueDescriptionPlaceholder": "輸入任務描述...",
+    "createDraftWorkspaceImmediately": "立即建立草稿工作區",
+    "createDraftWorkspaceDescription": "勾選後自動建立工作區",
+    "createTask": "建立任務",
+    "newIssue": "新問題",
+    "previewCodeBlock": "[程式碼區塊]",
+    "previewImage": "[圖片]",
+    "previewImageWithName": "[圖片: {{name}}]",
+    "previewFile": "[檔案]",
+    "previewFileWithName": "[檔案: {{name}}]",
+    "imageAttachmentNameFallback": "附件",
+    "removeImage": "移除圖片",
+    "maxImagesAtOnce": "一次最多上傳 {{count}} 張圖片",
+    "maxFilesAtOnce": "一次最多上傳 {{count}} 個檔案",
+    "fileNotImage": "檔案 {{filename}} 不是圖片",
+    "fileExceedsLimit": "檔案 {{filename}} 超過 20MB 限制",
+    "unknownError": "未知錯誤",
+    "failedToUploadFile": "上傳 {{filename}} 失敗：{{message}}",
+    "downloadAttachment": "下載附件",
+    "downloadAttachmentAria": "下載 {{filename}}",
+    "subIssues": "子任務",
+    "noSubIssues": "無子任務",
+    "markIndependentIssue": "標記為獨立問題",
+    "parentIssue": "父級",
+    "subIssueIndicator": "↳",
+    "showSubIssues": "顯示子任務",
+    "viewTabs": {
+      "active": "活動",
+      "all": "全部"
+    },
+    "loginRequired": {
+      "title": "需要登入",
+      "description": "請登入以查看此專案。",
+      "action": "登入"
+    }
+  },
+  "createMode": {
+    "headings": {
+      "repoStep": "你想在哪些儲存庫上工作？",
+      "chatStep": "你想做什麼工作？"
+    },
+    "repoPicker": {
+      "actions": {
+        "recent": "最近",
+        "browse": "瀏覽",
+        "create": "建立"
+      }
+    }
+  },
+  "syncError": {
+    "networkErrors": "網路錯誤",
+    "streamsAffected": "{{count}} 個資料流受影響",
+    "streamsAffected_other": "{{count}} 個資料流受影響",
+    "status": "(狀態 {{status}})",
+    "refreshPage": "重新整理頁面"
+  },
+  "onboardingSignIn": {
+    "subtitle": "Sign in to continue",
+    "signedInAs": "Signed in as {{name}}.",
+    "moreOptions": "More options",
+    "featureHeader": "Feature",
+    "signedInHeader": "Signed in",
+    "skipSignInHeader": "Don't sign in",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "migration": {
+    "allProjectsMigrated": "您的所有專案已遷移到雲端。",
+    "continueToProjects": "繼續前往專案"
+  },
+  "appBar": {
+    "kanban": {
+      "tooltip": "看板",
+      "title": "看板",
+      "description": "登入以使用看板管理您的編碼代理。",
+      "migrateOldProjects": "遷移舊專案"
+    }
   }
 }

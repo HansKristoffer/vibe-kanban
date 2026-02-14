@@ -13,6 +13,7 @@ use db::{
 };
 use executors::executors::ExecutorError;
 use futures::{StreamExt, TryStreamExt};
+use git::{GitService, GitServiceError};
 use git2::Error as Git2Error;
 use serde_json::Value;
 use services::services::{
@@ -25,12 +26,12 @@ use services::services::{
     file_search::FileSearchCache,
     filesystem::{FilesystemError, FilesystemService},
     filesystem_watcher::FilesystemWatcherError,
-    git::{GitService, GitServiceError},
     image::{ImageError, ImageService},
     inbox_poller::InboxPollerService,
     pr_monitor::PrMonitorService,
     project::ProjectService,
     queued_message::QueuedMessageService,
+    remote_client::RemoteClient,
     repo::RepoService,
     worktree_manager::WorktreeError,
 };
@@ -110,6 +111,10 @@ pub trait Deployment: Clone + Send + Sync + 'static {
     fn queued_message_service(&self) -> &QueuedMessageService;
 
     fn auth_context(&self) -> &AuthContext;
+
+    fn remote_client(&self) -> Result<RemoteClient, RemoteClientNotConfigured> {
+        Err(RemoteClientNotConfigured)
+    }
 
     async fn update_sentry_scope(&self) -> Result<(), DeploymentError> {
         let user_id = self.user_id();

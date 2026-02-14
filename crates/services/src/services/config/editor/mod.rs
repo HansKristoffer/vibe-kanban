@@ -9,7 +9,6 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS, Error)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(tag = "type", rename_all = "snake_case")]
-#[ts(export)]
 pub enum EditorOpenError {
     #[error("Editor executable '{executable}' not found in PATH")]
     ExecutableNotFound {
@@ -45,6 +44,7 @@ pub struct EditorConfig {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum EditorType {
     VsCode,
+    VsCodeInsiders,
     Cursor,
     Windsurf,
     IntelliJ,
@@ -84,6 +84,7 @@ impl EditorConfig {
     pub fn get_command(&self) -> CommandBuilder {
         let base_command = match &self.editor_type {
             EditorType::VsCode => "code",
+            EditorType::VsCodeInsiders => "code-insiders",
             EditorType::Cursor => "cursor",
             EditorType::Windsurf => "windsurf",
             EditorType::IntelliJ => "idea",
@@ -130,9 +131,73 @@ impl EditorConfig {
         self.resolve_command().await.is_ok()
     }
 
+    fn supports_vscode_extensions(&self) -> bool {
+        matches!(
+            self.editor_type,
+            EditorType::VsCode
+                | EditorType::VsCodeInsiders
+                | EditorType::Cursor
+                | EditorType::Windsurf
+                | EditorType::GoogleAntigravity
+        )
+    }
+
+    fn ensure_extension_recommended(path: &Path) {
+        if !path.is_dir() {
+            return;
+        }
+
+        let vscode_dir = path.join(".vscode");
+        let extensions_file = vscode_dir.join("extensions.json");
+        const EXTENSION_ID: &str = "bloop.vibe-kanban";
+
+        let mut json: serde_json::Value = if extensions_file.exists() {
+            match std::fs::read_to_string(&extensions_file) {
+                Ok(content) => serde_json::from_str(&content)
+                    .unwrap_or_else(|_| serde_json::json!({"recommendations": []})),
+                Err(_) => serde_json::json!({"recommendations": []}),
+            }
+        } else {
+            serde_json::json!({"recommendations": []})
+        };
+
+        if !json.get("recommendations").is_some_and(|v| v.is_array()) {
+            json["recommendations"] = serde_json::json!([]);
+        }
+
+        let recommendations = json["recommendations"].as_array().unwrap();
+        if recommendations
+            .iter()
+            .any(|v| v.as_str() == Some(EXTENSION_ID))
+        {
+            return;
+        }
+
+        json["recommendations"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(EXTENSION_ID));
+
+        if let Err(e) = std::fs::create_dir_all(&vscode_dir) {
+            tracing::warn!("Failed to create .vscode directory: {}", e);
+            return;
+        }
+        match serde_json::to_string_pretty(&json) {
+            Ok(content) => {
+                if let Err(e) = std::fs::write(&extensions_file, content) {
+                    tracing::warn!("Failed to write extensions.json: {}", e);
+                }
+            }
+            Err(e) => tracing::warn!("Failed to serialize extensions.json: {}", e),
+        }
+    }
+
     pub async fn open_file(&self, path: &Path) -> Result<Option<String>, EditorOpenError> {
         if let Some(url) = self.remote_url(path) {
             return Ok(Some(url));
+        }
+        if self.supports_vscode_extensions() {
+            Self::ensure_extension_recommended(path);
         }
         self.spawn_local(path).await?;
         Ok(None)
@@ -149,6 +214,7 @@ impl EditorConfig {
 
         let scheme = match self.editor_type {
             EditorType::VsCode => "vscode",
+            EditorType::VsCodeInsiders => "vscode-insiders",
             EditorType::Cursor => "cursor",
             EditorType::Windsurf => "windsurf",
             EditorType::GoogleAntigravity => "antigravity",

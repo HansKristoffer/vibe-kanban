@@ -1,8 +1,8 @@
 use std::{collections::HashMap, env, fs, path::Path};
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
-use server::routes::task_attempts::pr::DEFAULT_PR_DESCRIPTION_PROMPT;
 use services::services::claude_code_prd::DEFAULT_INBOX_PRD_TEMPLATE;
+use services::services::config::{DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_PR_DESCRIPTION_PROMPT};
 use ts_rs::TS;
 
 fn generate_types_content() -> String {
@@ -53,9 +53,13 @@ fn generate_types_content() -> String {
         db::models::task::UpdateTask::decl(),
         db::models::scratch::DraftFollowUpData::decl(),
         db::models::scratch::DraftWorkspaceData::decl(),
+        db::models::scratch::DraftWorkspaceLinkedIssue::decl(),
         db::models::scratch::DraftWorkspaceRepo::decl(),
+        db::models::scratch::DraftIssueData::decl(),
         db::models::scratch::PreviewSettingsData::decl(),
         db::models::scratch::WorkspaceNotesData::decl(),
+        db::models::scratch::WorkspacePanelStateData::decl(),
+        db::models::scratch::UiPreferencesData::decl(),
         db::models::scratch::ScratchPayload::decl(),
         db::models::scratch::ScratchType::decl(),
         db::models::scratch::Scratch::decl(),
@@ -84,39 +88,41 @@ fn generate_types_content() -> String {
         utils::diff::Diff::decl(),
         utils::diff::DiffChangeKind::decl(),
         utils::response::ApiResponse::<()>::decl(),
-        utils::api::oauth::LoginStatus::decl(),
-        utils::api::oauth::ProfileResponse::decl(),
-        utils::api::oauth::ProviderProfile::decl(),
-        utils::api::oauth::StatusResponse::decl(),
-        utils::api::organizations::MemberRole::decl(),
-        utils::api::organizations::InvitationStatus::decl(),
-        utils::api::organizations::Organization::decl(),
-        utils::api::organizations::OrganizationWithRole::decl(),
-        utils::api::organizations::ListOrganizationsResponse::decl(),
-        utils::api::organizations::GetOrganizationResponse::decl(),
-        utils::api::organizations::CreateOrganizationRequest::decl(),
-        utils::api::organizations::CreateOrganizationResponse::decl(),
-        utils::api::organizations::UpdateOrganizationRequest::decl(),
-        utils::api::organizations::Invitation::decl(),
-        utils::api::organizations::CreateInvitationRequest::decl(),
-        utils::api::organizations::CreateInvitationResponse::decl(),
-        utils::api::organizations::ListInvitationsResponse::decl(),
-        utils::api::organizations::GetInvitationResponse::decl(),
-        utils::api::organizations::AcceptInvitationResponse::decl(),
-        utils::api::organizations::RevokeInvitationRequest::decl(),
-        utils::api::organizations::OrganizationMember::decl(),
-        utils::api::organizations::OrganizationMemberWithProfile::decl(),
-        utils::api::organizations::ListMembersResponse::decl(),
-        utils::api::organizations::UpdateMemberRoleRequest::decl(),
-        utils::api::organizations::UpdateMemberRoleResponse::decl(),
-        utils::api::projects::RemoteProject::decl(),
-        utils::api::projects::ListProjectsResponse::decl(),
-        utils::api::projects::RemoteProjectMembersResponse::decl(),
+        api_types::LoginStatus::decl(),
+        api_types::ProfileResponse::decl(),
+        api_types::ProviderProfile::decl(),
+        api_types::StatusResponse::decl(),
+        api_types::MemberRole::decl(),
+        api_types::InvitationStatus::decl(),
+        api_types::Organization::decl(),
+        api_types::OrganizationWithRole::decl(),
+        api_types::ListOrganizationsResponse::decl(),
+        api_types::GetOrganizationResponse::decl(),
+        api_types::CreateOrganizationRequest::decl(),
+        api_types::CreateOrganizationResponse::decl(),
+        api_types::UpdateOrganizationRequest::decl(),
+        api_types::Invitation::decl(),
+        api_types::CreateInvitationRequest::decl(),
+        api_types::CreateInvitationResponse::decl(),
+        api_types::ListInvitationsResponse::decl(),
+        api_types::GetInvitationResponse::decl(),
+        api_types::AcceptInvitationResponse::decl(),
+        api_types::RevokeInvitationRequest::decl(),
+        api_types::OrganizationMemberInfo::decl(),
+        api_types::OrganizationMemberWithProfile::decl(),
+        api_types::ListMembersResponse::decl(),
+        api_types::UpdateMemberRoleRequest::decl(),
+        api_types::UpdateMemberRoleResponse::decl(),
         server::routes::projects::CreateRemoteProjectRequest::decl(),
         server::routes::projects::LinkToExistingRequest::decl(),
         server::routes::projects::ProjectMembersResponse::decl(),
         server::routes::projects::AddProjectMemberRequest::decl(),
         server::routes::projects::RemoveProjectMemberQuery::decl(),
+        services::services::migration::MigrationRequest::decl(),
+        services::services::migration::MigrationResponse::decl(),
+        services::services::migration::MigrationReport::decl(),
+        services::services::migration::EntityReport::decl(),
+        services::services::migration::EntityError::decl(),
         server::routes::repo::RegisterRepoRequest::decl(),
         server::routes::repo::InitRepoRequest::decl(),
         server::routes::tags::TagSearchParams::decl(),
@@ -134,6 +140,7 @@ fn generate_types_content() -> String {
         server::routes::config::CheckAgentAvailabilityQuery::decl(),
         server::routes::oauth::CurrentUserResponse::decl(),
         server::routes::sessions::CreateFollowUpAttempt::decl(),
+        server::routes::sessions::ResetProcessRequest::decl(),
         server::routes::task_attempts::ChangeTargetBranchRequest::decl(),
         server::routes::task_attempts::ChangeTargetBranchResponse::decl(),
         server::routes::task_attempts::MergeTaskAttemptRequest::decl(),
@@ -144,6 +151,7 @@ fn generate_types_content() -> String {
         server::routes::sessions::review::ReviewError::decl(),
         server::routes::task_attempts::OpenEditorRequest::decl(),
         server::routes::task_attempts::OpenEditorResponse::decl(),
+        server::routes::tasks::LinkedIssueInfo::decl(),
         server::routes::tasks::CreateAndStartTaskRequest::decl(),
         server::routes::tasks::WorkItemsResponse::decl(),
         server::routes::project_integrations::ProjectIntegrationsResponse::decl(),
@@ -170,6 +178,7 @@ fn generate_types_content() -> String {
         server::routes::task_attempts::RunAgentSetupResponse::decl(),
         server::routes::task_attempts::gh_cli_setup::GhCliSetupError::decl(),
         server::routes::task_attempts::RebaseTaskAttemptRequest::decl(),
+        server::routes::task_attempts::ContinueRebaseRequest::decl(),
         server::routes::task_attempts::AbortConflictsRequest::decl(),
         server::routes::task_attempts::GitOperationError::decl(),
         server::routes::task_attempts::PushError::decl(),
@@ -182,6 +191,12 @@ fn generate_types_content() -> String {
         server::routes::task_attempts::pr::GetPrCommentsQuery::decl(),
         services::services::git_host::UnifiedPrComment::decl(),
         services::services::git_host::ProviderKind::decl(),
+        services::services::git_host::OpenPrInfo::decl(),
+        git::GitRemote::decl(),
+        server::routes::repo::ListPrsError::decl(),
+        server::routes::task_attempts::pr::CreateWorkspaceFromPrBody::decl(),
+        server::routes::task_attempts::pr::CreateWorkspaceFromPrResponse::decl(),
+        server::routes::task_attempts::pr::CreateFromPrError::decl(),
         server::routes::task_attempts::RepoBranchStatus::decl(),
         server::routes::task_attempts::UpdateWorkspace::decl(),
         server::routes::task_attempts::workspace_summary::WorkspaceSummaryRequest::decl(),
@@ -202,10 +217,10 @@ fn generate_types_content() -> String {
         services::services::config::UiLanguage::decl(),
         services::services::config::ShowcaseState::decl(),
         services::services::config::SendMessageShortcut::decl(),
-        services::services::git::GitBranch::decl(),
+        git::GitBranch::decl(),
         services::services::queued_message::QueuedMessage::decl(),
         services::services::queued_message::QueueStatus::decl(),
-        services::services::git::ConflictOp::decl(),
+        git::ConflictOp::decl(),
         executors::actions::ExecutorAction::decl(),
         executors::mcp_config::McpConfig::decl(),
         executors::actions::ExecutorActionType::decl(),
@@ -272,16 +287,11 @@ fn generate_types_content() -> String {
         .join("\n\n");
 
     // Append exported constants
-    let prompt_escaped = DEFAULT_PR_DESCRIPTION_PROMPT
-        .replace('\\', "\\\\")
-        .replace('`', "\\`");
-    let inbox_prd_template_escaped = DEFAULT_INBOX_PRD_TEMPLATE
-        .replace('\\', "\\\\")
-        .replace('`', "\\`");
     let constants = format!(
-        "export const DEFAULT_PR_DESCRIPTION_PROMPT = `{}`;\nexport const DEFAULT_INBOX_PRD_TEMPLATE = `{}`;",
-        prompt_escaped,
-        inbox_prd_template_escaped
+        "export const DEFAULT_PR_DESCRIPTION_PROMPT = {};\n\nexport const DEFAULT_COMMIT_REMINDER_PROMPT = {};\n\nexport const DEFAULT_INBOX_PRD_TEMPLATE = {};",
+        serde_json::to_string(DEFAULT_PR_DESCRIPTION_PROMPT).unwrap(),
+        serde_json::to_string(DEFAULT_COMMIT_REMINDER_PROMPT).unwrap(),
+        serde_json::to_string(DEFAULT_INBOX_PRD_TEMPLATE).unwrap()
     );
 
     format!("{HEADER}\n\n{body}\n\n{constants}")

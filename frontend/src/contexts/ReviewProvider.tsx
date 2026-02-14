@@ -1,26 +1,20 @@
-import { SplitSide } from '@git-diff-view/react';
-import {
-  createContext,
-  useContext,
-  useState,
-  ReactNode,
-  useEffect,
-  useCallback,
-} from 'react';
+import { useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createHmrContext } from '@/lib/hmrContext.ts';
 import { genId } from '@/utils/id';
+import { DiffSide } from '@/types/diff';
 
 export interface ReviewComment {
   id: string;
   filePath: string;
   lineNumber: number;
-  side: SplitSide;
+  side: DiffSide;
   text: string;
   codeLine?: string;
 }
 
 export interface ReviewDraft {
   filePath: string;
-  side: SplitSide;
+  side: DiffSide;
   lineNumber: number;
   text: string;
   codeLine?: string;
@@ -37,7 +31,10 @@ interface ReviewContextType {
   generateReviewMarkdown: () => string;
 }
 
-const ReviewContext = createContext<ReviewContextType | null>(null);
+const ReviewContext = createHmrContext<ReviewContextType | null>(
+  'ReviewContext',
+  null
+);
 
 export function useReview() {
   const context = useContext(ReviewContext);

@@ -1,35 +1,43 @@
 use std::path::PathBuf;
 
+use api_types::{PullRequestStatus, UpsertPullRequestRequest};
 use axum::{
     Extension, Json,
     extract::{Query, State},
     response::Json as ResponseJson,
 };
 use db::models::{
+    coding_agent_turn::CodingAgentTurn,
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
     inbox_item::InboxItem,
     merge::{Merge, MergeStatus},
+    project::Project,
+    project_repo::ProjectRepo,
     repo::{Repo, RepoError},
     project_integrations::ProjectIntegrations,
     session::{CreateSession, Session},
-    task::{Task, TaskStatus},
-    workspace::{Workspace, WorkspaceError},
-    workspace_repo::WorkspaceRepo,
+    task::{CreateTask, Task, TaskStatus},
+    workspace::{CreateWorkspace, Workspace, WorkspaceError},
+    workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
 };
 use deployment::Deployment;
 use executors::actions::{
     ExecutorAction, ExecutorActionType, coding_agent_follow_up::CodingAgentFollowUpRequest,
     coding_agent_initial::CodingAgentInitialRequest,
 };
+use git::{GitCliError, GitRemote, GitServiceError};
 use serde::{Deserialize, Serialize};
 use services::services::{
+    config::DEFAULT_PR_DESCRIPTION_PROMPT,
     container::ContainerService,
-    git::{GitCliError, GitServiceError},
     git_host::{
         self, CreatePrRequest, GitHostError, GitHostProvider, ProviderKind, UnifiedPrComment,
+        github::GhCli,
     },
     inbox_outbound::post_pr_ready_if_needed,
+    remote_sync,
     workspace_assets::{WorkspaceAssetService, format_assets_as_markdown},
+    workspace_manager::WorkspaceManager,
 };
 use ts_rs::TS;
 use utils::response::ApiResponse;
@@ -96,19 +104,6 @@ pub struct GetPrCommentsQuery {
     pub repo_id: Uuid,
 }
 
-pub const DEFAULT_PR_DESCRIPTION_PROMPT: &str = r#"Update the PR that was just created with a better title and description.
-The PR number is #{pr_number} and the URL is {pr_url}.
-
-Analyze the changes in this branch and write:
-1. A concise, descriptive title that summarizes the changes, postfixed with "(Vibe Kanban)"
-2. A detailed description that explains:
-   - What changes were made
-   - Why they were made (based on the task context)
-   - Any important implementation details
-   - At the end, include a note: "This PR was written using [Vibe Kanban](https://vibekanban.com)"
-
-Use the appropriate CLI tool to update the PR (gh pr edit for GitHub, az repos pr update for Azure DevOps)."#;
-
 async fn trigger_pr_description_follow_up(
     deployment: &DeploymentImpl,
     workspace: &Workspace,
@@ -156,12 +151,9 @@ async fn trigger_pr_description_follow_up(
         return Ok(());
     };
 
-    // Get latest agent session ID if one exists (for coding agent continuity)
-    let latest_agent_session_id = ExecutionProcess::find_latest_coding_agent_turn_session_id(
-        &deployment.db().pool,
-        session.id,
-    )
-    .await?;
+    // Get latest agent turn if one exists (for coding agent continuity)
+    let latest_session_info =
+        CodingAgentTurn::find_latest_session_info(&deployment.db().pool, session.id).await?;
 
     let working_dir = workspace
         .agent_working_dir
@@ -170,10 +162,11 @@ async fn trigger_pr_description_follow_up(
         .cloned();
 
     // Build the action type (follow-up if session exists, otherwise initial)
-    let action_type = if let Some(agent_session_id) = latest_agent_session_id {
+    let action_type = if let Some(info) = latest_session_info {
         ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
             prompt,
-            session_id: agent_session_id,
+            session_id: info.session_id,
+            reset_to_message_id: None,
             executor_profile_id: executor_profile_id.clone(),
             working_dir: working_dir.clone(),
         })
@@ -231,25 +224,22 @@ pub async fn create_pr(
     let worktree_path = workspace_path.join(&repo.name);
 
     let git = deployment.git();
-    let push_remote = git.resolve_remote_name_for_branch(&repo_path, &workspace.branch)?;
+    let push_remote = git.resolve_remote_for_branch(&repo_path, &workspace.branch)?;
 
     // Try to get the remote from the branch name (works for remote-tracking branches like "upstream/main").
     // Fall back to push_remote if the branch doesn't exist locally or isn't a remote-tracking branch.
     let (target_remote, base_branch) =
-        match git.get_remote_name_from_branch_name(&repo_path, &target_branch) {
+        match git.get_remote_from_branch_name(&repo_path, &target_branch) {
             Ok(remote) => {
                 let branch = target_branch
-                    .strip_prefix(&format!("{remote}/"))
+                    .strip_prefix(&format!("{}/", remote.name))
                     .unwrap_or(&target_branch);
                 (remote, branch.to_string())
             }
             Err(_) => (push_remote.clone(), target_branch.clone()),
         };
 
-    let push_remote_url = git.get_remote_url(&repo_path, &push_remote)?;
-    let target_remote_url = git.get_remote_url(&repo_path, &target_remote)?;
-
-    match git.check_remote_branch_exists(&repo_path, &target_remote_url, &base_branch) {
+    match git.check_remote_branch_exists(&repo_path, &target_remote.url, &base_branch) {
         Ok(false) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(
                 PrError::TargetBranchNotFound {
@@ -296,7 +286,7 @@ pub async fn create_pr(
         }
     }
 
-    let git_host = match git_host::GitHostService::from_url(&target_remote_url) {
+    let git_host = match git_host::GitHostService::from_url(&target_remote.url) {
         Ok(host) => host,
         Err(GitHostError::UnsupportedProvider) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(
@@ -347,11 +337,11 @@ pub async fn create_pr(
         head_branch: workspace.branch.clone(),
         base_branch: base_branch.clone(),
         draft: request.draft,
-        head_repo_url: Some(push_remote_url),
+        head_repo_url: Some(push_remote.url.clone()),
     };
 
     match git_host
-        .create_pr(&repo_path, &target_remote_url, &pr_request)
+        .create_pr(&repo_path, &target_remote.url, &pr_request)
         .await
     {
         Ok(pr_info) => {
@@ -378,6 +368,21 @@ pub async fn create_pr(
                             .await;
                     }
                 }
+            }
+
+            if let Ok(client) = deployment.remote_client() {
+                let request = UpsertPullRequestRequest {
+                    url: pr_info.url.clone(),
+                    number: pr_info.number as i32,
+                    status: PullRequestStatus::Open,
+                    merged_at: None,
+                    merge_commit_sha: None,
+                    target_branch_name: base_branch.clone(),
+                    local_workspace_id: workspace.id,
+                };
+                tokio::spawn(async move {
+                    remote_sync::sync_pr_to_remote(&client, request).await;
+                });
             }
 
             // Auto-open PR in browser
@@ -469,12 +474,9 @@ pub async fn attach_existing_pr(
     }
 
     let git = deployment.git();
-    let remote_url = git.get_remote_url(
-        &repo.path,
-        &git.resolve_remote_name_for_branch(&repo.path, &workspace_repo.target_branch)?,
-    )?;
+    let remote = git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch)?;
 
-    let git_host = match git_host::GitHostService::from_url(&remote_url) {
+    let git_host = match git_host::GitHostService::from_url(&remote.url) {
         Ok(host) => host,
         Err(GitHostError::UnsupportedProvider) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(
@@ -493,7 +495,7 @@ pub async fn attach_existing_pr(
 
     // List all PRs for branch (open, closed, and merged)
     let prs = match git_host
-        .list_prs_for_branch(&repo.path, &remote_url, &workspace.branch)
+        .list_prs_for_branch(&repo.path, &remote.url, &workspace.branch)
         .await
     {
         Ok(prs) => prs,
@@ -542,11 +544,34 @@ pub async fn attach_existing_pr(
             .await?;
         }
 
+        if let Ok(client) = deployment.remote_client() {
+            let pr_status = match pr_info.status {
+                MergeStatus::Open => PullRequestStatus::Open,
+                MergeStatus::Merged => PullRequestStatus::Merged,
+                MergeStatus::Closed => PullRequestStatus::Closed,
+                MergeStatus::Unknown => PullRequestStatus::Open,
+            };
+            let request = UpsertPullRequestRequest {
+                url: pr_info.url.clone(),
+                number: pr_info.number as i32,
+                status: pr_status,
+                merged_at: None,
+                merge_commit_sha: pr_info.merge_commit_sha.clone(),
+                target_branch_name: workspace_repo.target_branch.clone(),
+                local_workspace_id: workspace.id,
+            };
+            tokio::spawn(async move {
+                remote_sync::sync_pr_to_remote(&client, request).await;
+            });
+        }
+
         // If PR is merged, mark task as done and archive workspace
         if matches!(pr_info.status, MergeStatus::Merged) {
             Task::update_status(pool, task.id, TaskStatus::Done).await?;
-            if !workspace.pinned {
-                Workspace::set_archived(pool, workspace.id, true).await?;
+            if !workspace.pinned
+                && let Err(e) = deployment.container().archive_workspace(workspace.id).await
+            {
+                tracing::error!("Failed to archive workspace {}: {}", workspace.id, e);
             }
         }
 
@@ -597,12 +622,9 @@ pub async fn get_pr_comments(
     };
 
     let git = deployment.git();
-    let remote_url = git.get_remote_url(
-        &repo.path,
-        &git.resolve_remote_name_for_branch(&repo.path, &workspace_repo.target_branch)?,
-    )?;
+    let remote = git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch)?;
 
-    let git_host = match git_host::GitHostService::from_url(&remote_url) {
+    let git_host = match git_host::GitHostService::from_url(&remote.url) {
         Ok(host) => host,
         Err(GitHostError::CliNotInstalled { provider }) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(
@@ -615,7 +637,7 @@ pub async fn get_pr_comments(
     let provider = git_host.provider_kind();
 
     match git_host
-        .get_pr_comments(&repo.path, &remote_url, pr_info.number)
+        .get_pr_comments(&repo.path, &remote.url, pr_info.number)
         .await
     {
         Ok(comments) => Ok(ResponseJson(ApiResponse::success(PrCommentsResponse {
@@ -641,4 +663,273 @@ pub async fn get_pr_comments(
             }
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+pub struct CreateWorkspaceFromPrBody {
+    pub repo_id: Uuid,
+    pub pr_number: i64,
+    pub pr_title: String,
+    pub pr_url: String,
+    pub head_branch: String,
+    pub base_branch: String,
+    pub run_setup: bool,
+    pub remote_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct CreateWorkspaceFromPrResponse {
+    pub workspace: Workspace,
+    pub task: Task,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[ts(tag = "type", rename_all = "snake_case")]
+pub enum CreateFromPrError {
+    PrNotFound,
+    BranchFetchFailed { message: String },
+    CliNotInstalled { provider: ProviderKind },
+    AuthFailed { message: String },
+    UnsupportedProvider,
+    RepoNotInProject,
+}
+
+/// Best-effort cleanup of partially-created workspace resources.
+/// Used when workspace creation from PR fails after DB records and filesystem
+/// resources have already been created.
+///
+/// DB records are deleted synchronously (fast). Filesystem cleanup is spawned
+/// as a background task to avoid blocking the error response.
+async fn cleanup_failed_pr_workspace(
+    pool: &sqlx::SqlitePool,
+    workspace: &Workspace,
+    task_id: Uuid,
+) {
+    let workspace_id = workspace.id;
+
+    // Gather data needed for background filesystem cleanup before deleting DB records
+    let workspace_dir = workspace.container_ref.clone().map(PathBuf::from);
+    let repositories = match WorkspaceRepo::find_repos_for_workspace(pool, workspace_id).await {
+        Ok(repos) => repos,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to find repos for workspace {} during cleanup: {}",
+                workspace_id,
+                e
+            );
+            vec![]
+        }
+    };
+
+    // Delete the task — cascades to workspace → workspace_repos, sessions, merges, etc.
+    if let Err(e) = Task::delete(pool, task_id).await {
+        tracing::warn!("Failed to delete task {} during cleanup: {}", task_id, e);
+    }
+
+    // Spawn background cleanup for filesystem resources (worktrees, workspace dir)
+    if let Some(workspace_dir) = workspace_dir {
+        tokio::spawn(async move {
+            if let Err(e) = WorkspaceManager::cleanup_workspace(&workspace_dir, &repositories).await
+            {
+                tracing::error!(
+                    "Background cleanup failed for workspace {} at {}: {}",
+                    workspace_id,
+                    workspace_dir.display(),
+                    e
+                );
+            }
+        });
+    }
+}
+
+#[axum::debug_handler]
+pub async fn create_workspace_from_pr(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<CreateWorkspaceFromPrBody>,
+) -> Result<ResponseJson<ApiResponse<CreateWorkspaceFromPrResponse, CreateFromPrError>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let repo = Repo::find_by_id(pool, payload.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+    let project_repos = ProjectRepo::find_by_repo_id(pool, payload.repo_id).await?;
+    let project_id = match project_repos.first() {
+        Some(project_repo) => project_repo.project_id,
+        None => {
+            // Repo not associated with any project — fall back to the first available project
+            tracing::warn!(
+                "Repo {} is not associated with any project, falling back to first project",
+                payload.repo_id
+            );
+            let projects = Project::find_all(pool).await?;
+            match projects.first() {
+                Some(project) => project.id,
+                None => {
+                    return Ok(ResponseJson(ApiResponse::error_with_data(
+                        CreateFromPrError::RepoNotInProject,
+                    )));
+                }
+            }
+        }
+    };
+
+    let remote = match payload.remote_name {
+        Some(ref name) => GitRemote {
+            url: deployment.git().get_remote_url(&repo.path, name)?,
+            name: name.clone(),
+        },
+        None => deployment.git().get_default_remote(&repo.path)?,
+    };
+
+    // Use target branch initially - we'll switch to PR branch via gh pr checkout
+    let target_branch_ref = format!("{}/{}", remote.name, payload.base_branch);
+
+    let task_id = Uuid::new_v4();
+    let create_task = CreateTask {
+        project_id,
+        title: payload.pr_title.clone(),
+        description: Some(format!(
+            "Created from PR #{}: {}",
+            payload.pr_number, payload.pr_url
+        )),
+        status: Some(TaskStatus::InProgress),
+        parent_workspace_id: None,
+        image_ids: None,
+    };
+    let task = Task::create(pool, &create_task, task_id).await?;
+
+    let agent_working_dir = Some(repo.name.clone());
+
+    // Create workspace with target branch initially
+    let workspace_id = Uuid::new_v4();
+    let mut workspace = Workspace::create(
+        pool,
+        &CreateWorkspace {
+            branch: target_branch_ref.clone(),
+            agent_working_dir,
+        },
+        workspace_id,
+        task.id,
+    )
+    .await?;
+
+    WorkspaceRepo::create_many(
+        pool,
+        workspace.id,
+        &[CreateWorkspaceRepo {
+            repo_id: payload.repo_id,
+            target_branch: target_branch_ref.clone(),
+        }],
+    )
+    .await?;
+
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&workspace)
+        .await?;
+
+    // Update workspace with container_ref so start_execution can find it
+    workspace.container_ref = Some(container_ref.clone());
+
+    // Use gh pr checkout to fetch and switch to the PR branch
+    // This handles SSH/HTTPS auth correctly regardless of fork URL format
+    let worktree_path = PathBuf::from(&container_ref).join(&repo.name);
+    match GhCli::new().get_repo_info(&remote.url, &worktree_path) {
+        Ok(repo_info) => {
+            if let Err(e) = GhCli::new().pr_checkout(
+                &worktree_path,
+                &repo_info.owner,
+                &repo_info.repo_name,
+                payload.pr_number,
+            ) {
+                tracing::error!("Failed to checkout PR branch: {e}");
+                cleanup_failed_pr_workspace(pool, &workspace, task.id).await;
+                return Ok(ResponseJson(ApiResponse::error_with_data(
+                    CreateFromPrError::BranchFetchFailed {
+                        message: e.to_string(),
+                    },
+                )));
+            }
+            // Update workspace branch to the actual PR branch
+            Workspace::update_branch_name(pool, workspace.id, &payload.head_branch).await?;
+            workspace.branch = payload.head_branch.clone();
+        }
+        Err(e) => {
+            tracing::error!(
+                "Failed to get repo info for PR checkout (gh CLI may not be installed): {e}"
+            );
+            cleanup_failed_pr_workspace(pool, &workspace, task.id).await;
+            return Ok(ResponseJson(ApiResponse::error_with_data(
+                CreateFromPrError::BranchFetchFailed {
+                    message: format!("Failed to get repository info: {e}"),
+                },
+            )));
+        }
+    }
+
+    Merge::create_pr(
+        pool,
+        workspace.id,
+        payload.repo_id,
+        &format!("{}/{}", remote.name, payload.base_branch),
+        payload.pr_number,
+        &payload.pr_url,
+    )
+    .await?;
+
+    if payload.run_setup {
+        let repos = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
+        if let Some(setup_action) = deployment.container().setup_actions_for_repos(&repos) {
+            let session = Session::create(
+                pool,
+                &CreateSession { executor: None },
+                Uuid::new_v4(),
+                workspace.id,
+            )
+            .await?;
+
+            if let Err(e) = deployment
+                .container()
+                .start_execution(
+                    &workspace,
+                    &session,
+                    &setup_action,
+                    &ExecutionProcessRunReason::SetupScript,
+                )
+                .await
+            {
+                tracing::error!("Failed to run setup script: {}", e);
+            }
+        }
+    }
+
+    deployment
+        .track_if_analytics_allowed(
+            "workspace_created_from_pr",
+            serde_json::json!({
+                "task_id": task.id.to_string(),
+                "workspace_id": workspace.id.to_string(),
+                "project_id": project_id.to_string(),
+                "pr_number": payload.pr_number,
+                "run_setup": payload.run_setup,
+            }),
+        )
+        .await;
+
+    tracing::info!(
+        "Created workspace {} from PR #{} for task {}",
+        workspace.id,
+        payload.pr_number,
+        task.id
+    );
+
+    let workspace = Workspace::find_by_id(pool, workspace.id)
+        .await?
+        .ok_or(WorkspaceError::TaskNotFound)?;
+
+    Ok(ResponseJson(ApiResponse::success(
+        CreateWorkspaceFromPrResponse { workspace, task },
+    )))
 }

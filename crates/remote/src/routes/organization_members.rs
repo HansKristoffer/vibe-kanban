@@ -9,8 +9,8 @@ use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::warn;
-use utils::api::organizations::{
-    ListMembersResponse, OrganizationMemberWithProfile, RevokeInvitationRequest,
+use api_types::{
+    ListMembersResponse, MemberRole, OrganizationMemberWithProfile, RevokeInvitationRequest,
     UpdateMemberRoleRequest, UpdateMemberRoleResponse,
 };
 use uuid::Uuid;
@@ -22,8 +22,9 @@ use crate::{
     db::{
         identity_errors::IdentityError,
         invitations::{Invitation, InvitationRepository},
+        issue_comments::IssueCommentRepository,
         issues::IssueRepository,
-        organization_members::{self, MemberRole},
+        organization_members,
         organizations::OrganizationRepository,
         projects::ProjectRepository,
     },
@@ -100,6 +101,12 @@ pub async fn create_invitation(
 
     ensure_admin_access(&state.pool, org_id, user.id).await?;
 
+    state
+        .billing()
+        .can_add_member(org_id)
+        .await
+        .map_err(|e| e.to_error_response("Cannot invite more members"))?;
+
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::days(7);
 
@@ -142,6 +149,18 @@ pub async fn create_invitation(
             user.username.as_deref(),
         )
         .await;
+
+    if let Some(analytics) = state.analytics() {
+        analytics.track(
+            user.id,
+            "invitation_created",
+            serde_json::json!({
+                "invitation_id": invitation.id,
+                "organization_id": org_id,
+                "role": format!("{:?}", payload.role),
+            }),
+        );
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -240,15 +259,30 @@ pub async fn accept_invitation(
     let invitation_repo = InvitationRepository::new(&state.pool);
 
     let (org, role) = invitation_repo
-        .accept_invitation(&token, user.id)
+        .accept_invitation(&token, user.id, state.billing())
         .await
         .map_err(|e| match e {
             IdentityError::InvitationError(msg) => ErrorResponse::new(StatusCode::BAD_REQUEST, msg),
             IdentityError::NotFound => {
                 ErrorResponse::new(StatusCode::NOT_FOUND, "Invitation not found")
             }
+            #[cfg(feature = "vk-billing")]
+            IdentityError::Billing(billing_err) => {
+                billing_err.to_error_response("Cannot accept invitation")
+            }
             _ => ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
         })?;
+
+    if let Some(analytics) = state.analytics() {
+        analytics.track(
+            user.id,
+            "invitation_accepted",
+            serde_json::json!({
+                "organization_id": org.id,
+                "role": format!("{:?}", role),
+            }),
+        );
+    }
 
     Ok(Json(AcceptInvitationResponse {
         organization_id: org.id.to_string(),
@@ -383,6 +417,8 @@ pub async fn remove_member(
     tx.commit()
         .await
         .map_err(|_| ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    state.billing().on_member_count_changed(org_id).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -598,4 +634,27 @@ pub(crate) async fn ensure_issue_access(
         })?;
 
     Ok(organization_id)
+}
+
+pub(crate) async fn ensure_comment_access(
+    pool: &PgPool,
+    user_id: Uuid,
+    comment_id: Uuid,
+) -> Result<Uuid, ErrorResponse> {
+    let comment = IssueCommentRepository::find_by_id(pool, comment_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(?error, %comment_id, "failed to load comment");
+            ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        })?
+        .ok_or_else(|| {
+            warn!(
+                %comment_id,
+                %user_id,
+                "comment not found for access check"
+            );
+            ErrorResponse::new(StatusCode::NOT_FOUND, "comment not found")
+        })?;
+
+    ensure_issue_access(pool, user_id, comment.issue_id).await
 }

@@ -51,6 +51,10 @@ npx vibe-kanban
 
 Please head to the [website](https://vibekanban.com/docs) for the latest documentation and user guides.
 
+## Self-Hosting
+
+Want to host your own Vibe Kanban Cloud instance? See our [self-hosting guide](https://vibekanban.com/docs/self-hosting).
+  
 ## Support
 
 We use [GitHub Discussions](https://github.com/BloopAI/vibe-kanban/discussions) for feature requests. Please open a discussion to create a feature request. For bugs please open an issue on this repo.
@@ -84,7 +88,7 @@ pnpm i
 pnpm run dev
 ```
 
-This will start the backend. A blank DB will be copied from the `dev_assets_seed` folder.
+This will start the backend and frontend. A blank DB will be copied from the `dev_assets_seed` folder.
 
 ### Building the frontend
 
@@ -99,7 +103,6 @@ pnpm build
 
 1. Run `./local-build.sh`
 2. Test with `cd npx-cli && node bin/cli.js`
-
 
 ### Environment Variables
 
@@ -118,7 +121,7 @@ The following environment variables can be configured at build time or runtime:
 | `GOOGLE_CLIENT_ID` | Runtime | Empty | Google OAuth client ID for SSO login |
 | `GOOGLE_CLIENT_SECRET` | Runtime | Empty | Google OAuth client secret for SSO login |
 | `VK_PUBLIC_BASE_URL` | Runtime | Empty | Public base URL (e.g. `https://your-host`); used for OAuth redirect URI and secure cookies |
-| `DISABLE_WORKTREE_ORPHAN_CLEANUP` | Runtime | Not set | Disable git worktree cleanup (for debugging) |
+| `DISABLE_WORKTREE_CLEANUP` | Runtime | Not set | Disable all git worktree cleanup including orphan and expired workspace cleanup (for debugging) |
 | `VK_ALLOWED_ORIGINS` | Runtime | Not set | Comma-separated list of origins that are allowed to make backend API requests (e.g., `https://my-vibekanban-frontend.com`) |
 
 **Build-time variables** must be set when running `pnpm run build`. **Runtime variables** are read when the application starts.

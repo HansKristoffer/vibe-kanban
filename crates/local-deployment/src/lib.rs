@@ -1,9 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
+use api_types::LoginStatus;
 use async_trait::async_trait;
 use db::DBService;
 use deployment::{Deployment, DeploymentError, RemoteClientNotConfigured};
 use executors::profile::ExecutorConfigs;
+use git::GitService;
 use services::services::{
     analytics::{AnalyticsConfig, AnalyticsContext, AnalyticsService, generate_user_id},
     approvals::Approvals,
@@ -13,9 +15,9 @@ use services::services::{
     events::EventService,
     file_search::FileSearchCache,
     filesystem::FilesystemService,
-    git::GitService,
     image::ImageService,
     oauth_credentials::OAuthCredentials,
+    pr_monitor::PrMonitorService,
     project::ProjectService,
     queued_message::QueuedMessageService,
     remote_client::{RemoteClient, RemoteClientError},
@@ -24,7 +26,6 @@ use services::services::{
 };
 use tokio::sync::RwLock;
 use utils::{
-    api::oauth::LoginStatus,
     assets::{config_path, credentials_path},
     msg_store::MsgStore,
 };
@@ -179,6 +180,7 @@ impl Deployment for LocalDeployment {
             analytics_ctx,
             approvals.clone(),
             queued_message_service.clone(),
+            remote_client.clone().ok(),
         )
         .await;
 
@@ -187,6 +189,16 @@ impl Deployment for LocalDeployment {
         let file_search_cache = Arc::new(FileSearchCache::new());
 
         let pty = PtyService::new();
+        {
+            let db = db.clone();
+            let analytics = analytics.as_ref().map(|s| AnalyticsContext {
+                user_id: user_id.clone(),
+                analytics_service: s.clone(),
+            });
+            let container = container.clone();
+            let rc = remote_client.clone().ok();
+            PrMonitorService::spawn(db, analytics, container, rc).await;
+        }
 
         let deployment = Self {
             config,

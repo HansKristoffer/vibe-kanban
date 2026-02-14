@@ -1,4 +1,4 @@
-import { ReactNode, useRef, useEffect } from 'react';
+import { ReactNode, useState, useRef, useEffect } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { PortalContainerContext } from '@/contexts/PortalContainerContext';
 import {
@@ -6,6 +6,7 @@ import {
   useWorkspaceContext,
 } from '@/contexts/WorkspaceContext';
 import { ActionsProvider } from '@/contexts/ActionsContext';
+import { UserProvider } from '@/contexts/remote/UserContext';
 import { SequenceTrackerProvider } from '@/keyboard/SequenceTracker';
 import { SequenceIndicator } from '@/keyboard/SequenceIndicator';
 import { useWorkspaceShortcuts } from '@/keyboard/useWorkspaceShortcuts';
@@ -49,7 +50,7 @@ function KeyboardShortcutsHandler() {
 }
 
 export function NewDesignScope({ children }: NewDesignScopeProps) {
-  const ref = useRef<HTMLDivElement>(null);
+  const [container, setContainer] = useState<HTMLElement | null>(null);
   const posthog = usePostHog();
   const hasTracked = useRef(false);
 
@@ -61,24 +62,28 @@ export function NewDesignScope({ children }: NewDesignScopeProps) {
   }, [posthog]);
 
   return (
-    <div ref={ref} className="new-design h-full">
-      <PortalContainerContext.Provider value={ref}>
-        <WorkspaceProvider>
-          <ExecutionProcessesProviderWrapper>
-            <LogsPanelProvider>
-              <ActionsProvider>
-                <SequenceTrackerProvider>
-                  <SequenceIndicator />
-                  <NiceModal.Provider>
-                    <KeyboardShortcutsHandler />
-                    {children}
-                  </NiceModal.Provider>
-                </SequenceTrackerProvider>
-              </ActionsProvider>
-            </LogsPanelProvider>
-          </ExecutionProcessesProviderWrapper>
-        </WorkspaceProvider>
-      </PortalContainerContext.Provider>
+    <div ref={setContainer} className="new-design h-full">
+      {container && (
+        <PortalContainerContext.Provider value={container}>
+          <WorkspaceProvider>
+            <ExecutionProcessesProviderWrapper>
+              <LogsPanelProvider>
+                <UserProvider>
+                  <ActionsProvider>
+                    <SequenceTrackerProvider>
+                      <SequenceIndicator />
+                      <NiceModal.Provider>
+                        <KeyboardShortcutsHandler />
+                        {children}
+                      </NiceModal.Provider>
+                    </SequenceTrackerProvider>
+                  </ActionsProvider>
+                </UserProvider>
+              </LogsPanelProvider>
+            </ExecutionProcessesProviderWrapper>
+          </WorkspaceProvider>
+        </PortalContainerContext.Provider>
+      )}
     </div>
   );
 }

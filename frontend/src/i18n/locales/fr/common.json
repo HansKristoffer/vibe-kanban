@@ -1,4 +1,7 @@
 {
+  "editorNames": {
+    "custom": "Personnalisé"
+  },
   "buttons": {
     "save": "Enregistrer",
     "cancel": "Annuler",
@@ -14,7 +17,8 @@
     "close": "Fermer",
     "replay": "Rejouer",
     "discard": "Abandonner",
-    "addItem": "Ajouter un élément"
+    "addItem": "Ajouter un élément",
+    "reply": "Répondre"
   },
   "form": {
     "notSpecified": "Non spécifié",
@@ -48,6 +52,7 @@
     "taskCompleted": "Tâche terminée",
     "ran": "Exécuté",
     "tool": "Outil",
+    "thinking": "Réflexion",
     "toolSummary": {
       "read": "Lu {{path}}",
       "searched": "Recherché \"{{query}}\"",
@@ -56,7 +61,10 @@
       "createdTask": "Tâche créée : {{description}}",
       "todoOperation": "{{operation}} tâches à faire"
     },
-    "fixScript": "Corriger le script"
+    "fixScript": "Corriger le script",
+    "subagent": {
+      "defaultType": "Sous-agent"
+    }
   },
   "folderPicker": {
     "legend": "Cliquez sur les noms de dossiers pour naviguer • Utilisez les boutons d'action pour sélectionner",
@@ -91,11 +99,18 @@
     "menuItem": "Organisation",
     "loadingPlaceholder": "Chargement des organisations...",
     "selectPlaceholder": "Sélectionner une organisation",
-    "currentBadge": " (actuelle)"
+    "currentBadge": " (actuelle)",
+    "organizations": "Organisations",
+    "createOrganization": "Créer une organisation",
+    "orgSettings": "Paramètres de l'organisation",
+    "migrate": "Migrer"
   },
   "navbar": {
     "tryNewUI": "essayer la nouvelle interface"
   },
+  "ok": "OK",
+  "error": "Erreur",
+  "signIn": "Se connecter",
   "signOut": "Se déconnecter",
   "devMode": {
     "banner": "Mode développement - Ceci est une version de développement"
@@ -135,12 +150,14 @@
     "active": "Actif",
     "archived": "Archivé",
     "loading": "Chargement...",
+    "notFound": "Espace de travail introuvable",
     "selectToStart": "Sélectionnez un espace de travail pour commencer",
     "draft": "Brouillon",
     "viewArchive": "Voir les archives",
     "backToActive": "Retour aux actifs",
     "noArchived": "Aucun espace de travail archivé",
     "noWorkspaces": "Aucun espace de travail",
+    "newWorkspace": "Nouvel espace de travail",
     "needsAttention": "Nécessite Attention",
     "idle": "Inactif",
     "running": "En Cours",
@@ -155,6 +172,21 @@
       "placeholder": "Saisir le nom de l'espace de travail",
       "action": "Renommer",
       "renaming": "Renommage..."
+    },
+    "unlinkFromIssue": "Dissocier du problème",
+    "deleteWorkspace": "Supprimer l'espace de travail",
+    "unlink": "Dissocier",
+    "delete": "Supprimer",
+    "unlinkConfirmMessage": "Êtes-vous sûr de vouloir dissocier cet espace de travail du problème ? L'espace de travail existera toujours mais ne sera plus associé à ce problème.",
+    "deleteConfirmMessage": "Êtes-vous sûr de vouloir supprimer cet espace de travail ? Cela le dissociera du problème et supprimera l'espace de travail local. Cette action est irréversible.",
+    "unlinkError": "Échec de la dissociation de l'espace de travail",
+    "deleteError": "Échec de la suppression de l'espace de travail",
+    "filesChanged": "{{count}} fichiers",
+    "deleteDialog": {
+      "title": "Supprimer l'espace de travail",
+      "description": "Êtes-vous sûr de vouloir supprimer cet espace de travail ? Cette action est irréversible.",
+      "deleteBranchLabel": "Supprimer la branche",
+      "cannotDeleteOpenPr": "Impossible de supprimer la branche tant que la PR est ouverte"
     }
   },
   "fileTree": {
@@ -224,7 +256,9 @@
   "commandBar": {
     "noResults": "Aucun résultat trouvé.",
     "back": "Retour",
-    "defaultPlaceholder": "Tapez une commande ou recherchez..."
+    "defaultPlaceholder": "Tapez une commande ou recherchez...",
+    "selectBranch": "Select Branch",
+    "selectBranchFor": "Select Branch for {{repoName}}"
   },
   "chatBox": {
     "variants": "Variantes",
@@ -322,7 +356,123 @@
     "tags": "Tags",
     "files": "Fichiers",
     "commands": "Commandes",
+    "chooseRepo": "Choisir un dépôt",
+    "selectedRepo": "Dépôt sélectionné : {{repoName}}",
+    "missingRepo": "Le dépôt sélectionné n'est plus disponible.",
     "noTagsOrFiles": "Aucun tag ou fichier trouvé",
     "noCommands": "Aucune commande disponible pour cet agent."
+  },
+  "kanban": {
+    "noStatusesFound": "Aucun statut trouvé pour ce projet",
+    "noVisibleStatuses": "Tous les statuts sont masqués. Utilisez les paramètres d'affichage ou changez d'onglet pour voir les problèmes.",
+    "noProjectFound": "Aucun projet trouvé",
+    "noOrganizationFound": "Aucune organisation trouvée",
+    "unassigned": "Non assigné",
+    "noTagsAvailable": "Aucun tag disponible",
+    "createNewIssue": "Créer un nouveau ticket",
+    "createNewTag": "Créer un nouveau tag",
+    "searchTags": "Rechercher des tags...",
+    "selectColorFor": "Sélectionner la couleur pour",
+    "createTag": "Créer",
+    "filesCount": "{{count}} Fichiers",
+    "attachmentsTitle": "Pièces jointes ({{count}})",
+    "deleteAttachmentAria": "Supprimer {{filename}}",
+    "noPrCreated": "Aucune PR créée",
+    "noCommentsYet": "Aucun commentaire",
+    "createdBy": "Créé par",
+    "comments": "Commentaires",
+    "enterCommentPlaceholder": "Entrez votre commentaire ici...",
+    "attachImage": "Joindre une image",
+    "attachFile": "Joindre un fichier",
+    "attachFileHint": "Joindre des fichiers (20Mo max par fichier)",
+    "attach": "Joindre",
+    "dropImagesHere": "Déposez les images ici",
+    "dropFilesHere": "Déposez les fichiers ici",
+    "imageDropHint": "PNG, JPG, GIF jusqu'à 20Mo",
+    "fileDropHint": "Tout type de fichier jusqu'à 20Mo",
+    "unknownFile": "Fichier inconnu",
+    "unknownUser": "Utilisateur inconnu",
+    "deletedUser": "Utilisateur supprimé",
+    "replyQuotePrefix": "a écrit :",
+    "moreActions": "Plus d'actions",
+    "closePanel": "Fermer le panneau",
+    "issueTitlePlaceholder": "Titre du ticket...",
+    "issueDescriptionPlaceholder": "Entrez la description de la tâche...",
+    "createDraftWorkspaceImmediately": "Créer immédiatement un espace de travail brouillon",
+    "createDraftWorkspaceDescription": "Cochez pour créer automatiquement un espace de travail",
+    "createTask": "Créer la tâche",
+    "newIssue": "Nouveau ticket",
+    "previewCodeBlock": "[Bloc de code]",
+    "previewImage": "[Image]",
+    "previewImageWithName": "[Image : {{name}}]",
+    "previewFile": "[Fichier]",
+    "previewFileWithName": "[Fichier : {{name}}]",
+    "imageAttachmentNameFallback": "Pièce jointe",
+    "removeImage": "Supprimer l'image",
+    "maxImagesAtOnce": "Maximum {{count}} images à la fois",
+    "maxFilesAtOnce": "Maximum {{count}} fichiers à la fois",
+    "fileNotImage": "Le fichier {{filename}} n'est pas une image",
+    "fileExceedsLimit": "Le fichier {{filename}} dépasse la limite de 20Mo",
+    "unknownError": "Erreur inconnue",
+    "failedToUploadFile": "Échec de l'envoi de {{filename}} : {{message}}",
+    "downloadAttachment": "Télécharger la pièce jointe",
+    "downloadAttachmentAria": "Télécharger {{filename}}",
+    "subIssues": "Sous-tâches",
+    "noSubIssues": "Aucune sous-tâche",
+    "markIndependentIssue": "Marquer comme problème indépendant",
+    "parentIssue": "Parent",
+    "subIssueIndicator": "↳",
+    "showSubIssues": "Afficher les sous-tâches",
+    "viewTabs": {
+      "active": "Actif",
+      "all": "Tout"
+    },
+    "loginRequired": {
+      "title": "Connexion requise",
+      "description": "Veuillez vous connecter pour voir ce projet.",
+      "action": "Se connecter"
+    }
+  },
+  "createMode": {
+    "headings": {
+      "repoStep": "Sur quels dépôts voulez-vous travailler ?",
+      "chatStep": "Sur quoi voulez-vous travailler ?"
+    },
+    "repoPicker": {
+      "actions": {
+        "recent": "Récents",
+        "browse": "Parcourir",
+        "create": "Créer"
+      }
+    }
+  },
+  "syncError": {
+    "networkErrors": "Erreurs réseau",
+    "streamsAffected": "{{count}} flux affecté",
+    "streamsAffected_other": "{{count}} flux affectés",
+    "status": "(statut {{status}})",
+    "refreshPage": "Actualiser la page"
+  },
+  "onboardingSignIn": {
+    "subtitle": "Sign in to continue",
+    "signedInAs": "Signed in as {{name}}.",
+    "moreOptions": "More options",
+    "featureHeader": "Feature",
+    "signedInHeader": "Signed in",
+    "skipSignInHeader": "Don't sign in",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "migration": {
+    "allProjectsMigrated": "Tous vos projets ont déjà été migrés vers le cloud.",
+    "continueToProjects": "Continuer vers les projets"
+  },
+  "appBar": {
+    "kanban": {
+      "tooltip": "Kanban",
+      "title": "Tableaux Kanban",
+      "description": "Connectez-vous pour organiser vos agents de codage avec des tableaux kanban.",
+      "migrateOldProjects": "Migrer les anciens projets"
+    }
   }
 }

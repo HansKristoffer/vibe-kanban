@@ -1,11 +1,5 @@
-import {
-  createContext,
-  useContext,
-  ReactNode,
-  useMemo,
-  useCallback,
-  useEffect,
-} from 'react';
+import { useContext, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import { createHmrContext } from '@/lib/hmrContext.ts';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -78,7 +72,8 @@ interface WorkspaceContextValue {
 }
 
 // Exported for optional usage outside WorkspaceProvider (e.g., old UI)
-export const WorkspaceContext = createContext<WorkspaceContextValue | null>(
+export const WorkspaceContext = createHmrContext<WorkspaceContextValue | null>(
+  'WorkspaceContext',
   null
 );
 
@@ -129,6 +124,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   // TODO: Support multiple repos - currently only fetches comments from the primary repo.
   const primaryRepoId = repos[0]?.id;
 
+  // Check if current workspace has a PR attached (from workspace summaries)
+  const currentWorkspaceSummary = activeWorkspaces.find(
+    (w) => w.id === workspaceId
+  );
+  const hasPrAttached = !!currentWorkspaceSummary?.prStatus;
+
   // GitHub comments hook (fetching, normalization, and helpers)
   const {
     gitHubComments,
@@ -142,7 +143,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   } = useGitHubComments({
     workspaceId,
     repoId: primaryRepoId,
-    enabled: !isCreateMode,
+    enabled: !isCreateMode && hasPrAttached,
   });
 
   // Stream diffs for the current workspace

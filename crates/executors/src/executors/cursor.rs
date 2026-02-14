@@ -41,7 +41,7 @@ pub struct CursorAgent {
     pub force: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(
-        description = "auto, sonnet-4.5, sonnet-4.5-thinking, gpt-5, opus-4.1, grok, composer-1"
+        description = "auto, sonnet-4.5, sonnet-4.5-thinking, gpt-5, opus-4.1, grok, composer-1, composer-1.5"
     )]
     pub model: Option<String>,
     #[serde(flatten)]
@@ -114,6 +114,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
         current_dir: &Path,
         prompt: &str,
         session_id: &str,
+        _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
         mcp::ensure_mcp_server_trust(self, current_dir).await;

@@ -9,6 +9,10 @@ pub const VIBE_ASSETS_DIR: &str = ".vibe-assets";
 /// Manifest filename for workspace assets
 pub const VIBE_ASSETS_MANIFEST: &str = "manifest.json";
 
+/// Directories that should always be skipped regardless of gitignore.
+/// .git is not in .gitignore but should never be watched.
+pub const ALWAYS_SKIP_DIRS: &[&str] = &[".git", "node_modules"];
+
 /// Convert absolute paths to relative paths based on worktree path
 /// This is a robust implementation that handles symlinks and edge cases
 pub fn make_path_relative(path: &str, worktree_path: &str) -> String {
@@ -63,7 +67,7 @@ pub fn make_path_relative(path: &str, worktree_path: &str) -> String {
                     result
                 }
                 Err(e) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         "Failed to make canonical path relative: '{}' relative to '{}', error: {}, returning original",
                         canon_path.display(),
                         canon_worktree.display(),

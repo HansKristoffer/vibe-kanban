@@ -6,21 +6,35 @@ use axum::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use super::{error::ErrorResponse, organization_members::ensure_issue_access};
+use super::{
+    error::{ErrorResponse, db_error},
+    organization_members::ensure_issue_access,
+};
+use api_types::{DeleteResponse, MutationResponse};
 use crate::{
     AppState,
     auth::RequestContext,
-    db::issue_relationships::{IssueRelationship, IssueRelationshipRepository},
-    define_mutation_router,
-    entities::{
-        CreateIssueRelationshipRequest, ListIssueRelationshipsQuery,
-        ListIssueRelationshipsResponse, UpdateIssueRelationshipRequest,
-    },
-    mutation_types::{DeleteResponse, MutationResponse},
+    db::issue_relationships::IssueRelationshipRepository,
+    mutation_definition::{MutationBuilder, NoUpdate},
+};
+use api_types::{
+    CreateIssueRelationshipRequest, IssueRelationship, ListIssueRelationshipsQuery,
+    ListIssueRelationshipsResponse,
 };
 
-// Generate router that references handlers below
-define_mutation_router!(IssueRelationship, table: "issue_relationships");
+/// Mutation definition for IssueRelationship - provides both router and TypeScript metadata.
+pub fn mutation(
+) -> MutationBuilder<IssueRelationship, CreateIssueRelationshipRequest, NoUpdate> {
+    MutationBuilder::new("issue_relationships")
+        .list(list_issue_relationships)
+        .get(get_issue_relationship)
+        .create(create_issue_relationship)
+        .delete(delete_issue_relationship)
+}
+
+pub fn router() -> axum::Router<AppState> {
+    mutation().router()
+}
 
 #[instrument(
     name = "issue_relationships.list_issue_relationships",
@@ -100,27 +114,10 @@ async fn create_issue_relationship(
     .await
     .map_err(|error| {
         tracing::error!(?error, "failed to create issue relationship");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        db_error(error, "failed to create issue relationship")
     })?;
 
     Ok(Json(response))
-}
-
-#[instrument(
-    name = "issue_relationships.update_issue_relationship",
-    skip(_state, _ctx, _payload),
-    fields(issue_relationship_id = %_issue_relationship_id)
-)]
-async fn update_issue_relationship(
-    State(_state): State<AppState>,
-    Extension(_ctx): Extension<RequestContext>,
-    Path(_issue_relationship_id): Path<Uuid>,
-    Json(_payload): Json<UpdateIssueRelationshipRequest>,
-) -> Result<Json<MutationResponse<IssueRelationship>>, ErrorResponse> {
-    Err(ErrorResponse::new(
-        StatusCode::METHOD_NOT_ALLOWED,
-        "issue relationships cannot be updated, only created or deleted",
-    ))
 }
 
 #[instrument(
